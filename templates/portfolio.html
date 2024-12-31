@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #0a2540;
+            color: #ffffff;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            color: #ffffff;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .stats div {
+            background-color: #1a3b5d;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            flex: 1;
+            margin: 0 10px;
+        }
+
+        .stats div h2 {
+            font-size: 18px;
+            margin: 0;
+            color: #f3ba2f;
+        }
+
+        .stats div p {
+            font-size: 16px;
+            margin: 5px 0 0;
+            color: #ffffff;
+        }
+
+        .chart, .table-section {
+            background-color: #1a3b5d;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .chart h3, .table-section h3 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: #f3ba2f;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            color: #ffffff;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ffffff;
+        }
+
+        th {
+            background-color: #122c47;
+        }
+
+        tr:hover {
+            background-color: #233e5b;
+        }
+
+        footer {
+            text-align: center;
+            padding: 10px;
+            background-color: #122c47;
+            color: #ffffff;
+            position: fixed;
+            width: 100%;
+            bottom: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <!-- Header -->
+        <div class="header">
+            <h1>Portfolio Overview</h1>
+        </div>
+
+        <!-- Stats Section -->
+        <div class="stats">
+            <div>
+                <h2>Total Value</h2>
+                <p>SAR 1,250,000</p>
+            </div>
+            <div>
+                <h2>YTD Performance</h2>
+                <p>12.4%</p>
+            </div>
+            <div>
+                <h2>Projected Growth</h2>
+                <p>15.2%</p>
+            </div>
+        </div>
+
+        <!-- Chart Section -->
+        <div class="chart">
+            <h3>Asset Allocation</h3>
+            <p>(Insert Pie Chart here using tools like Chart.js or embed an image)</p>
+        </div>
+
+        <!-- Performance Graph -->
+        <div class="chart">
+            <h3>YTD Performance</h3>
+            <p>(Insert Line Chart here)</p>
+        </div>
+
+        <!-- Table Section -->
+        <div class="table-section">
+            <h3>Holdings</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Stock</th>
+                        <th>Shares</th>
+                        <th>Avg Price</th>
+                        <th>Current Price</th>
+                        <th>Weight</th>
+                        <th>Return</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Aramco</td>
+                        <td>1000</td>
+                        <td>32.5</td>
+                        <td>35.8</td>
+                        <td>30%</td>
+                        <td style="color: #28a745;">10.15%</td>
+                    </tr>
+                    <tr>
+                        <td>Al Rajhi Bank</td>
+                        <td>500</td>
+                        <td>75.2</td>
+                        <td>82.4</td>
+                        <td>25%</td>
+                        <td style="color: #28a745;">9.57%</td>
+                    </tr>
+                    <tr>
+                        <td>Saudi Telecom</td>
+                        <td>800</td>
+                        <td>45.6</td>
+                        <td>48.2</td>
+                        <td>20%</td>
+                        <td style="color: #28a745;">5.70%</td>
+                    </tr>
+                    <tr>
+                        <td>SABIC</td>
+                        <td>600</td>
+                        <td>92.3</td>
+                        <td>88.5</td>
+                        <td>15%</td>
+                        <td style="color: #dc3545;">-4.12%</td>
+                    </tr>
+                    <tr>
+                        <td>Dubai Healthcare</td>
+                        <td>400</td>
+                        <td>65.4</td>
+                        <td>71.2</td>
+                        <td>10%</td>
+                        <td style="color: #28a745;">8.67%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        © 2024 Saudi Exchange. All rights reserved.
+    </footer>
+</body>
+</html>
