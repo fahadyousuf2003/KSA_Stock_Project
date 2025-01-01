@@ -108,21 +108,24 @@
     <script>
         const messages = document.getElementById('messages');
 
-        function sendMessage() {
-            const userInput = document.getElementById('userInput');
-            const userMessage = userInput.value.trim();
+        async function sendMessage() {
+    const userInput = document.getElementById('userInput');
+    const userMessage = userInput.value.trim();
 
-            if (userMessage) {
-                addMessage(userMessage, 'user');
-                userInput.value = '';
+    if (userMessage) {
+        addMessage(userMessage, 'user');
+        userInput.value = '';
 
-                // Simulate chatbot response
-                setTimeout(() => {
-                    const botResponse = getStockRecommendation(userMessage);
-                    addMessage(botResponse, 'bot');
-                }, 1000);
-            }
+        // Fetch chatbot response from the server
+        try {
+            const botResponse = await getStockRecommendation(userMessage);
+            addMessage(botResponse, 'bot');
+        } catch (error) {
+            addMessage("Error: Unable to fetch response from the server.", 'bot');
+            console.error("Error:", error);
         }
+    }
+}
 
         function addMessage(text, sender) {
             const messageElement = document.createElement('div');
@@ -138,10 +141,26 @@
             messages.scrollTop = messages.scrollHeight;
         }
 
-        function getStockRecommendation(query) {
-            // Placeholder logic for stock recommendation
-            return "I'm analyzing the stock market trends. Please wait...";
+        async function getStockRecommendation(query) {
+    try {
+        const response = await fetch('/chatbot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            return data.response;
+        } else {
+            return "Error: Unable to fetch response from the server.";
         }
+    } catch (error) {
+        console.error("Error:", error);
+        return "Error: Unable to connect to the server.";
+    }
+}
+
     </script>
 </body>
 </html>

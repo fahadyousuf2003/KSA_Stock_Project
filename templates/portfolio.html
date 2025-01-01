@@ -54,6 +54,29 @@
             text-align: center;
             margin: 20px 0;
         }
+
+        /* Chatbot Icon Styling */
+        .chatbot-icon {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #007bff;
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            z-index: 1000;
+        }
+
+        .chatbot-icon:hover {
+            background-color: #0056b3;
+        }
     </style>
 </head>
 
@@ -100,6 +123,11 @@
             </tbody>
         </table>
     </div>
+
+    <!-- Chatbot Icon -->
+    <a href="{{ url_for('chatbot') }}" class="chatbot-icon" title="Chatbot">
+        💬
+    </a>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>

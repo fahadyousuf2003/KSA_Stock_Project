@@ -1,0 +1,7 @@
+Flask
+Flask-SQLAlchemy
+pymysql
+streamlit
+langchain-google-genai
+google-generativeai
+pydantic

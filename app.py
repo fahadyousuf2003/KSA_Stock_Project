@@ -1,8 +1,19 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
+from flask import jsonify
 from sqlalchemy import DECIMAL
 import pymysql
 from decimal import Decimal
+import streamlit as st
+import os
+import pathlib
+import textwrap
+from langchain_google_genai import ChatGoogleGenerativeAI
+import google.generativeai as genai
+
+from IPython.display import display
+from IPython.display import Markdown
+
 
 pymysql.install_as_MySQLdb()
 
@@ -10,6 +21,7 @@ app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 app.config["SQLALCHEMY_DATABASE_URI"] = 'mysql://root:@localhost/KSA_Stock_Project'
 db = SQLAlchemy(app)
+genai.configure(api_key="AIzaSyA8CuC1z-d7kSK00dcve5ZorUnGFRoDuI0")
 
 # Database Models
 class User_info(db.Model):
@@ -36,6 +48,13 @@ class Stocks(db.Model):
     updated_at = db.Column(db.DateTime)
     portfolios = db.relationship('Portfolio', backref='stock', lazy=True)
 
+class StockPriceHistory(db.Model):
+    __tablename__ = 'stock price history'
+    price_history_id = db.Column(db.Integer, primary_key=True)
+    stock_id = db.Column(db.Integer, db.ForeignKey('stocks.stock_id'), nullable=False)
+    price = db.Column(db.DECIMAL(10, 2), nullable=False)
+    date = db.Column(db.TIMESTAMP, nullable=False, server_default=db.func.current_timestamp())
+
 class Portfolio(db.Model):
     portfolio_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user_info.id'), nullable=False)
@@ -44,7 +63,13 @@ class Portfolio(db.Model):
     quantity = db.Column(db.Integer, nullable=False)
     purchase_price = db.Column(DECIMAL(10,2), nullable=False)
     purchase_date = db.Column(db.Date, nullable=False)
-    
+
+
+def get_gemini_response(question):
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    response = model.generate_content(question)
+    return response.text
+ 
 # Routes
 @app.route('/')
 def index():
@@ -107,26 +132,34 @@ def portfolio():
     ).filter(
         Portfolio.user_id == session['user_id']
     ).all()
-    
+    stock_prices = db.session.query(
+        StockPriceHistory.stock_id, StockPriceHistory.price
+    ).filter(
+        StockPriceHistory.date == '2024-12-20'
+    ).all()
+    price_dict = {stock_id: price for stock_id, price in stock_prices}
     # Calculate total portfolio value and returns
-    total_value = Decimal('10')
-    for portfolio, stocks in portfolio_items:
-        holding_value = stocks.current_price * portfolio.quantity
-        total_value += holding_value
+    total_value = Decimal('0')
     
     # Format portfolio data for template
     holdings = []
+    total_value=0
     for portfolio, stocks in portfolio_items:
-        current_value = stocks.current_price * portfolio.quantity
-        purchase_value = portfolio.purchase_price * portfolio.quantity
-        return_pct = ((current_value - purchase_value) / purchase_value * 100)
-        weight = (current_value / total_value * 100)
+        current_price = Decimal(price_dict.get(stocks.stock_id, 100))  # Fallback if price not found
+        holding_value = current_price * Decimal(portfolio.quantity)
+        total_value += holding_value
+    for portfolio, stocks in portfolio_items:
+        current_price = Decimal(price_dict.get(stocks.stock_id, 100))  # Fallback if price not found
+        current_value = current_price * Decimal(portfolio.quantity)
+        purchase_value = Decimal(portfolio.purchase_price) * Decimal(portfolio.quantity)
+        return_pct = ((current_value - purchase_value) / purchase_value * 100) if purchase_value > 0 else 0
+        weight = (current_value / total_value * 100) if total_value > 0 else 0
         
         holdings.append({
             'stock_name': stocks.company_name,
             'shares': portfolio.quantity,
             'avg_price': float(portfolio.purchase_price),
-            'current_price': float(stocks.current_price),
+            'current_price': float(current_price),
             'weight': float(weight),
             'return': float(return_pct)
         })
@@ -137,18 +170,28 @@ def portfolio():
         total_value=float(total_value),
         holdings=holdings
     )
-@app.route('/chatbot', methods=['POST'])
+@app.route('/chatbot', methods=['GET', 'POST'])
 def chatbot():
-    data = request.get_json()
-    query = data.get('query')
+    if request.method == 'GET':
+        return render_template('chatbot.html')
+    
+    try:
+        data = request.get_json()
+        if not data or 'query' not in data:
+            return {"response": "Invalid input. Please provide a valid query."}, 400
 
-    # Placeholder logic for stock price recommendation
-    if "recommend" in query.lower():
-        response = "Based on historical data, stock XYZ is performing well this quarter."
-    else:
-        response = "I can assist with stock price recommendations. Please ask about specific stocks or sectors."
+        query = data.get('query')
+        if not query:
+            return jsonify({"response": "Please provide a valid question."})
 
-    return {"response": response}
+        try:
+            response = get_gemini_response(query)
+            return jsonify({"response": response})
+        except Exception as e:
+            return jsonify({"response": f"Error: {str(e)}"})
+    except Exception as e:
+        print(f"Server Error: {str(e)}")  # For debugging
+        return jsonify({"response": "Internal server error"}), 500
 
 
 if __name__ == '__main__':
