@@ -24,7 +24,7 @@ class User_info(db.Model):
     Password = db.Column(db.String(120), nullable=False)
     portfolios = db.relationship('Portfolio', backref='user', lazy=True)
 
-class Stock(db.Model):
+class Stocks(db.Model):
     stock_id = db.Column(db.Integer, primary_key=True)
     ticker_symbol = db.Column(db.String(10), nullable=False)
     company_name = db.Column(db.String(100), nullable=False)
@@ -39,7 +39,8 @@ class Stock(db.Model):
 class Portfolio(db.Model):
     portfolio_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user_info.id'), nullable=False)
-    stock_id = db.Column(db.Integer, db.ForeignKey('stock.stock_id'), nullable=False)
+    # stock_id = db.Column(db.Integer, db.ForeignKey('Stocks.stock_id'), nullable=False)
+    stock_id = db.Column(db.Integer, db.ForeignKey('stocks.stock_id'), nullable=False) 
     quantity = db.Column(db.Integer, nullable=False)
     purchase_price = db.Column(DECIMAL(10,2), nullable=False)
     purchase_date = db.Column(db.Date, nullable=False)
@@ -100,32 +101,32 @@ def portfolio():
     
     # Fetch user's portfolio with stock details
     portfolio_items = db.session.query(
-        Portfolio, Stock
+        Portfolio, Stocks
     ).join(
-        Stock, Portfolio.stock_id == Stock.stock_id
+        Stocks, Portfolio.stock_id == Stocks.stock_id
     ).filter(
         Portfolio.user_id == session['user_id']
     ).all()
     
     # Calculate total portfolio value and returns
-    total_value = Decimal('0')
-    for portfolio, stock in portfolio_items:
-        holding_value = stock.current_price * portfolio.quantity
+    total_value = Decimal('10')
+    for portfolio, stocks in portfolio_items:
+        holding_value = stocks.current_price * portfolio.quantity
         total_value += holding_value
     
     # Format portfolio data for template
     holdings = []
-    for portfolio, stock in portfolio_items:
-        current_value = stock.current_price * portfolio.quantity
+    for portfolio, stocks in portfolio_items:
+        current_value = stocks.current_price * portfolio.quantity
         purchase_value = portfolio.purchase_price * portfolio.quantity
         return_pct = ((current_value - purchase_value) / purchase_value * 100)
         weight = (current_value / total_value * 100)
         
         holdings.append({
-            'stock_name': stock.company_name,
+            'stock_name': stocks.company_name,
             'shares': portfolio.quantity,
             'avg_price': float(portfolio.purchase_price),
-            'current_price': float(stock.current_price),
+            'current_price': float(stocks.current_price),
             'weight': float(weight),
             'return': float(return_pct)
         })
@@ -136,6 +137,19 @@ def portfolio():
         total_value=float(total_value),
         holdings=holdings
     )
+@app.route('/chatbot', methods=['POST'])
+def chatbot():
+    data = request.get_json()
+    query = data.get('query')
+
+    # Placeholder logic for stock price recommendation
+    if "recommend" in query.lower():
+        response = "Based on historical data, stock XYZ is performing well this quarter."
+    else:
+        response = "I can assist with stock price recommendations. Please ask about specific stocks or sectors."
+
+    return {"response": response}
+
 
 if __name__ == '__main__':
     with app.app_context():
