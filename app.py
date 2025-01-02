@@ -1,5 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
+import spacy
+import re
 from flask import jsonify
 from sqlalchemy import DECIMAL
 import pymysql
@@ -14,7 +16,7 @@ import google.generativeai as genai
 from IPython.display import display
 from IPython.display import Markdown
 
-
+nlp = spacy.load("en_core_web_sm")
 pymysql.install_as_MySQLdb()
 
 app = Flask(__name__)
@@ -196,6 +198,13 @@ def chatbot():
         if not query:
             return jsonify({"response": "Please provide a valid question."})
 
+        if 'buy' in query.lower():
+            stock_name, quantity = extract_stock_info(query)
+            if stock_name and quantity:
+                # Call the buy_stock function with extracted stock name and quantity
+                return buy_stock_logic(stock_name, quantity)
+            else:
+                return jsonify({"response": "Unable to extract stock name and quantity from the query."})
         try:
             response = get_gemini_response(query)
             return jsonify({"response": response})
@@ -259,6 +268,149 @@ def buy_stock():
         return redirect(url_for('portfolio'))
 
     return render_template('buy_stock.html')
+def extract_stock_info(query):
+    """Extract stock name and quantity from the query using NLP."""
+    regex = r'(\d+)\s*(share|shares)\s*of\s*([A-Za-z\s]+)'
+    match = re.search(regex, query.lower())
+    if match:
+        quantity = int(match.group(1))
+        stock_name = match.group(3).strip().title()  # Capitalize stock name correctly
+        return stock_name, quantity
+    else:
+        # Fallback to spaCy for stock name extraction if regex fails
+        doc = nlp(query)
+        stock_name = None
+        quantity = None
+
+    # Extract entities related to stocks (assuming stock names are proper nouns)
+    for ent in doc.ents:
+        if ent.label_ == "ORG":  # Assuming stock names are recognized as organizations
+            stock_name = ent.text
+        elif ent.label_ == "CARDINAL":  # Assuming quantity is a number
+            quantity = int(ent.text)
+
+    # Return extracted stock name and quantity
+    return stock_name, quantity
+def buy_stock_logic(stock_name, quantity):
+    """Handle the stock purchase logic."""
+    # This is a simplified version of your buy_stock function, modify as per your logic
+    stock = Stocks.query.filter_by(company_name=stock_name).first()
+    if not stock:
+        return jsonify({"response": "Stock not found."}), 404
+
+    purchase_price = stock.current_price
+    total_cost = quantity * purchase_price
+
+    user_funds = Funds.query.filter_by(user_id=session['user_id']).first()
+    if not user_funds or user_funds.available_balance < float(total_cost):
+        return jsonify({"response": "Insufficient funds."}), 400
+
+    portfolio_entry = Portfolio.query.filter_by(user_id=session['user_id'], stock_id=stock.stock_id).first()
+    if portfolio_entry:
+        portfolio_entry.purchase_price = (
+            (portfolio_entry.purchase_price * portfolio_entry.quantity) + total_cost
+        ) / (portfolio_entry.quantity + quantity)
+        portfolio_entry.quantity += quantity
+    else:
+        portfolio_entry = Portfolio(
+            user_id=session['user_id'],
+            stock_id=stock.stock_id,
+            quantity=quantity,
+            purchase_price=purchase_price,
+            purchase_date=date.today()
+        )
+        db.session.add(portfolio_entry)
+
+    user_funds.available_balance -= float(total_cost)
+    try:
+        db.session.commit()
+        return jsonify({"response": "Stock purchased successfully!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"response": f"Error: {str(e)}"}), 500
+    
+
+@app.route('/sell_stock', methods=['GET', 'POST'])
+def sell_stock():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        stock_name = request.form.get('stock_name')
+        quantity = int(request.form.get('quantity'))
+
+        # Fetch stock details by name
+        stock = Stocks.query.filter_by(company_name=stock_name).first()
+        if not stock:
+            flash('Stock not found.', 'danger')
+            return redirect(url_for('portfolio'))
+
+        # Check user's portfolio
+        portfolio_entry = Portfolio.query.filter_by(user_id=session['user_id'], stock_id=stock.stock_id).first()
+        if not portfolio_entry or portfolio_entry.quantity < quantity:
+            flash('Insufficient stock quantity.', 'danger')
+            return redirect(url_for('portfolio'))
+
+        # Calculate the total sale amount
+        sale_price = stock.current_price
+        total_sale = quantity * sale_price
+
+        # Update portfolio
+        if portfolio_entry.quantity == quantity:
+            db.session.delete(portfolio_entry)  # Remove entry if all stocks are sold
+        else:
+            portfolio_entry.quantity -= quantity
+
+        # Update user's funds
+        user_funds = Funds.query.filter_by(user_id=session['user_id']).first()
+        if user_funds:
+            user_funds.available_balance += float(total_sale)
+        else:
+            flash('Error updating funds.', 'danger')
+            return redirect(url_for('portfolio'))
+
+        # Commit changes
+        try:
+            db.session.commit()
+            flash('Stock sold successfully!', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error: {str(e)}', 'danger')
+
+        return redirect(url_for('portfolio'))
+
+    return render_template('sell_stock.html')
+
+def sell_stock_logic(stock_name, quantity):
+    """Handle the stock sale logic."""
+    stock = Stocks.query.filter_by(company_name=stock_name).first()
+    if not stock:
+        return jsonify({"response": "Stock not found."}), 404
+
+    portfolio_entry = Portfolio.query.filter_by(user_id=session['user_id'], stock_id=stock.stock_id).first()
+    if not portfolio_entry or portfolio_entry.quantity < quantity:
+        return jsonify({"response": "Insufficient stock quantity."}), 400
+
+    sale_price = stock.current_price
+    total_sale = quantity * sale_price
+
+    if portfolio_entry.quantity == quantity:
+        db.session.delete(portfolio_entry)
+    else:
+        portfolio_entry.quantity -= quantity
+
+    user_funds = Funds.query.filter_by(user_id=session['user_id']).first()
+    if user_funds:
+        user_funds.available_balance += float(total_sale)
+    else:
+        return jsonify({"response": "Error updating funds."}), 500
+
+    try:
+        db.session.commit()
+        return jsonify({"response": "Stock sold successfully!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"response": f"Error: {str(e)}"}), 500
 
 if __name__ == '__main__':
     with app.app_context():
