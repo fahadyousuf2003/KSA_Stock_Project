@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portfolio</title>
     <style>
+        /* Add your CSS here */
         body {
             font-family: Arial, sans-serif;
             margin: 0;
@@ -26,6 +27,11 @@
         h1 {
             font-size: 24px;
             text-align: center;
+        }
+
+        .summary {
+            text-align: center;
+            margin: 20px 0;
         }
 
         .chart {
@@ -50,12 +56,6 @@
             background-color: #f4f4f4;
         }
 
-        .welcome {
-            text-align: center;
-            margin: 20px 0;
-        }
-
-        /* Chatbot Icon Styling */
         .chatbot-icon {
             position: fixed;
             bottom: 20px;
@@ -83,9 +83,10 @@
 <body>
     <div class="container">
         <!-- Welcome Message -->
-        <div class="welcome">
+        <div class="summary">
             <h1>Welcome, {{ user_name }}!</h1>
             <p>Your portfolio's total value is <strong>SAR {{ total_value }}</strong>.</p>
+            <p>Available Balance: <strong>SAR {{ available_balance }}</strong></p>
         </div>
 
         <!-- Profit and Loss Chart -->

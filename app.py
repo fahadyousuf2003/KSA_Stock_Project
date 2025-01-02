@@ -58,12 +58,19 @@ class StockPriceHistory(db.Model):
 class Portfolio(db.Model):
     portfolio_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user_info.id'), nullable=False)
-    # stock_id = db.Column(db.Integer, db.ForeignKey('Stocks.stock_id'), nullable=False)
     stock_id = db.Column(db.Integer, db.ForeignKey('stocks.stock_id'), nullable=False) 
     quantity = db.Column(db.Integer, nullable=False)
     purchase_price = db.Column(DECIMAL(10,2), nullable=False)
     purchase_date = db.Column(db.Date, nullable=False)
 
+class Funds(db.Model):
+    __tablename__ = 'funds'
+
+    fund_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user_info.id'), nullable=False)
+    available_balance = db.Column(db.Float, nullable=False, default=0.0)
+    total_balance = db.Column(db.Float, nullable=False, default=0.0)
+    last_updated = db.Column(db.DateTime, nullable=False)
 
 def get_gemini_response(question):
     model = genai.GenerativeModel('gemini-1.5-flash')
@@ -163,11 +170,16 @@ def portfolio():
             'weight': float(weight),
             'return': float(return_pct)
         })
+        user_funds = Funds.query.filter_by(user_id=session['user_id']).first()
+        if user_funds:
+            user_funds.total_balance = float(user_funds.available_balance) + float(total_value)
+            db.session.commit()
 
     return render_template(
         "portfolio.html",
         user_name=session.get('user_name'),
         total_value=float(total_value),
+        available_balance=user_funds.available_balance,
         holdings=holdings
     )
 @app.route('/chatbot', methods=['GET', 'POST'])
@@ -193,6 +205,60 @@ def chatbot():
         print(f"Server Error: {str(e)}")  # For debugging
         return jsonify({"response": "Internal server error"}), 500
 
+@app.route('/buy_stock', methods=['GET', 'POST'])
+def buy_stock():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        stock_name = request.form.get('stock_name')
+        quantity = int(request.form.get('quantity'))
+        stock = Stocks.query.filter_by(company_name=stock_name).first()
+        if not stock:
+            flash('Stock not found.', 'danger')
+            return redirect(url_for('portfolio'))
+        purchase_price = stock.current_price
+
+        # Fetch stock details by name
+
+        # Calculate total cost
+        total_cost = quantity * purchase_price
+
+        # Fetch user's funds
+        user_funds = Funds.query.filter_by(user_id=session['user_id']).first()
+        if not user_funds or user_funds.available_balance < float(total_cost):
+            flash('Insufficient funds.', 'danger')
+            return redirect(url_for('portfolio'))
+
+        # Update portfolio
+        portfolio_entry = Portfolio.query.filter_by(user_id=session['user_id'], stock_id=stock.stock_id).first()
+        if portfolio_entry:           
+            portfolio_entry.purchase_price = (
+                (portfolio_entry.purchase_price * portfolio_entry.quantity) + total_cost
+            ) / (portfolio_entry.quantity + quantity)
+            portfolio_entry.quantity += quantity
+        else:
+            portfolio_entry = Portfolio(
+                user_id=session['user_id'],
+                stock_id=stock.stock_id,
+                quantity=quantity,
+                purchase_price=purchase_price,
+                purchase_date=date.today()
+            )
+            db.session.add(portfolio_entry)
+
+        # Deduct funds
+        user_funds.available_balance -= float(total_cost)
+        try:
+            db.session.commit()
+            flash('Stock purchased successfully!', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error: {str(e)}', 'danger')
+
+        return redirect(url_for('portfolio'))
+
+    return render_template('buy_stock.html')
 
 if __name__ == '__main__':
     with app.app_context():
