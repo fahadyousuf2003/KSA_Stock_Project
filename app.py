@@ -15,6 +15,7 @@ import textwrap
 from datetime import datetime
 from langchain_google_genai import ChatGoogleGenerativeAI
 import google.generativeai as genai
+from datetime import date
 
 from IPython.display import display
 from IPython.display import Markdown
@@ -273,6 +274,10 @@ def chatbot():
     except Exception as e:
         print(f"Server Error: {str(e)}")  # For debugging
         return jsonify({"response": "Internal server error"}), 500
+    
+@app.route('/tradingview')
+def tradingview():
+    return render_template('tradingview.html')
 
 @app.route('/buy_stock', methods=['GET', 'POST'])
 def buy_stock():
