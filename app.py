@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
+from sqlalchemy import func
 from flask_sqlalchemy import SQLAlchemy
 import spacy
 import re
@@ -8,8 +9,10 @@ import pymysql
 from decimal import Decimal
 import streamlit as st
 import os
+import json
 import pathlib
 import textwrap
+from datetime import datetime
 from langchain_google_genai import ChatGoogleGenerativeAI
 import google.generativeai as genai
 
@@ -74,11 +77,60 @@ class Funds(db.Model):
     total_balance = db.Column(db.Float, nullable=False, default=0.0)
     last_updated = db.Column(db.DateTime, nullable=False)
 
-def get_gemini_response(question):
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    response = model.generate_content(question)
-    return response.text
- 
+def get_gemini_response(query, user_id=None):
+    """
+    Generate a response for the chatbot query, integrating Gemini with the database.
+    """
+    try:
+        # Handle portfolio queries
+        if 'portfolio' in query.lower():
+            if not user_id:
+                return "User ID is required to fetch portfolio information."
+            
+            portfolio = Portfolio.query.filter_by(user_id=user_id).all()
+            if not portfolio:
+                return "No portfolio found for the user."
+            
+            portfolio_details = []
+            for item in portfolio:
+                stock = Stocks.query.get(item.stock_id)
+                portfolio_details.append({
+                    "stock": stock.company_name,
+                    "ticker": stock.ticker_symbol,
+                    "quantity": item.quantity,
+                    "purchase_price": float(item.purchase_price),
+                    "current_price": float(stock.current_price),
+                    "purchase_date": item.purchase_date.strftime("%Y-%m-%d")
+                })
+            
+            return {"portfolio": portfolio_details}
+        
+        # Handle funds queries
+        if 'funds' in query.lower():
+            if not user_id:
+                return "User ID is required to fetch funds information."
+            
+            funds = Funds.query.filter_by(user_id=user_id).first()
+            if not funds:
+                return "No funds information found for the user."
+            if funds.last_updated and isinstance(funds.last_updated, datetime):
+                last_updated = funds.last_updated.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                last_updated = str(funds.last_updated)
+            response = {
+                "available_balance": float(funds.available_balance),  # Ensure it's a JSON-compatible type
+                "total_balance": float(funds.total_balance),          # Ensure it's a JSON-compatible type
+                "last_updated": last_updated
+            }
+            return json.dumps(response)
+        
+        # Default Gemini response
+        return "I didn't understand your query. Can you rephrase it?"
+    
+    except Exception as e:
+        print(f"Error in Gemini response: {str(e)}")
+        return f"An error occurred: {str(e)}"
+
 # Routes
 @app.route('/')
 def index():
@@ -195,6 +247,7 @@ def chatbot():
             return {"response": "Invalid input. Please provide a valid query."}, 400
 
         query = data.get('query')
+        user_id =  session['user_id']
         if not query:
             return jsonify({"response": "Please provide a valid question."})
 
@@ -205,8 +258,15 @@ def chatbot():
                 return buy_stock_logic(stock_name, quantity)
             else:
                 return jsonify({"response": "Unable to extract stock name and quantity from the query."})
+        if 'sell' in query.lower():
+            stock_name, quantity = extract_stock_info(query)
+            if stock_name and quantity:
+                return sell_stock_logic(stock_name, quantity)
+            else:
+                return jsonify({"response": "Unable to extract stock name and quantity from the query."})
+
         try:
-            response = get_gemini_response(query)
+            response = get_gemini_response(query, user_id)
             return jsonify({"response": response})
         except Exception as e:
             return jsonify({"response": f"Error: {str(e)}"})
@@ -270,11 +330,20 @@ def buy_stock():
     return render_template('buy_stock.html')
 def extract_stock_info(query):
     """Extract stock name and quantity from the query using NLP."""
+    stock_list = [
+        "Saudi Aramco", "SARCO", "PETRO RABIGH", "ARABIAN DRILLING", 
+        "ADES", "BAHRI", "ALDREES"
+    ]
+    query_lower = query.lower()
+    for stock in stock_list:
+        if stock.lower() in query_lower:
+            stock_name = stock
+            break 
     regex = r'(\d+)\s*(share|shares)\s*of\s*([A-Za-z\s]+)'
-    match = re.search(regex, query.lower())
+    match = re.search(regex, query_lower)
     if match:
         quantity = int(match.group(1))
-        stock_name = match.group(3).strip().title()  # Capitalize stock name correctly
+        # stock_name = match.group(3).strip().title()  # Capitalize stock name correctly
         return stock_name, quantity
     else:
         # Fallback to spaCy for stock name extraction if regex fails
@@ -340,7 +409,7 @@ def sell_stock():
         quantity = int(request.form.get('quantity'))
 
         # Fetch stock details by name
-        stock = Stocks.query.filter_by(company_name=stock_name).first()
+        stock = Stocks.query.filter(func.lower(Stocks.company_name) == stock_name.lower()).first()
         if not stock:
             flash('Stock not found.', 'danger')
             return redirect(url_for('portfolio'))
