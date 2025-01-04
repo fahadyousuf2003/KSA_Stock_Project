@@ -9,6 +9,8 @@ import pymysql
 from decimal import Decimal
 import streamlit as st
 import os
+import io
+from contextlib import redirect_stdout
 import json
 import pathlib
 import textwrap
@@ -16,18 +18,28 @@ from datetime import datetime
 from langchain_google_genai import ChatGoogleGenerativeAI
 import google.generativeai as genai
 from datetime import date
-
+import streamlit as st
+import traceback
+from groq import Groq
+from langchain_groq import ChatGroq
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Pinecone as PineconeVectorStore
+from pinecone import Pinecone
 from IPython.display import display
 from IPython.display import Markdown
-
+import pinecone
 nlp = spacy.load("en_core_web_sm")
 pymysql.install_as_MySQLdb()
 
+pc = Pinecone(api_key="pcsk_7YQanE_AP9y5db9N5vQaoUYC2h6bxvr92sEPyXzVBUcotcvBubtsEqsfkDaLQ6LrGwWRnw")
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 app.config["SQLALCHEMY_DATABASE_URI"] = 'mysql://root:@localhost/KSA_Stock_Project'
 db = SQLAlchemy(app)
 genai.configure(api_key="AIzaSyA8CuC1z-d7kSK00dcve5ZorUnGFRoDuI0")
+
 
 # Database Models
 class User_info(db.Model):
@@ -42,17 +54,19 @@ class User_info(db.Model):
     Password = db.Column(db.String(120), nullable=False)
     portfolios = db.relationship('Portfolio', backref='user', lazy=True)
 
+
 class Stocks(db.Model):
     stock_id = db.Column(db.Integer, primary_key=True)
     ticker_symbol = db.Column(db.String(10), nullable=False)
     company_name = db.Column(db.String(100), nullable=False)
-    current_price = db.Column(DECIMAL(10,2), nullable=False)
+    current_price = db.Column(DECIMAL(10, 2), nullable=False)
     sector = db.Column(db.String(50))
     listing_date = db.Column(db.Date)
-    high_price_52w = db.Column(DECIMAL(10,2))
-    low_price_52w = db.Column(DECIMAL(10,2))
+    high_price_52w = db.Column(DECIMAL(10, 2))
+    low_price_52w = db.Column(DECIMAL(10, 2))
     updated_at = db.Column(db.DateTime)
     portfolios = db.relationship('Portfolio', backref='stock', lazy=True)
+
 
 class StockPriceHistory(db.Model):
     __tablename__ = 'stock price history'
@@ -61,13 +75,15 @@ class StockPriceHistory(db.Model):
     price = db.Column(db.DECIMAL(10, 2), nullable=False)
     date = db.Column(db.TIMESTAMP, nullable=False, server_default=db.func.current_timestamp())
 
+
 class Portfolio(db.Model):
     portfolio_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user_info.id'), nullable=False)
-    stock_id = db.Column(db.Integer, db.ForeignKey('stocks.stock_id'), nullable=False) 
+    stock_id = db.Column(db.Integer, db.ForeignKey('stocks.stock_id'), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
-    purchase_price = db.Column(DECIMAL(10,2), nullable=False)
+    purchase_price = db.Column(DECIMAL(10, 2), nullable=False)
     purchase_date = db.Column(db.Date, nullable=False)
+
 
 class Funds(db.Model):
     __tablename__ = 'funds'
@@ -78,64 +94,156 @@ class Funds(db.Model):
     total_balance = db.Column(db.Float, nullable=False, default=0.0)
     last_updated = db.Column(db.DateTime, nullable=False)
 
-def get_gemini_response(query, user_id=None):
-    """
-    Generate a response for the chatbot query, integrating Gemini with the database.
-    """
-    try:
-        # Handle portfolio queries
-        if 'portfolio' in query.lower():
-            if not user_id:
-                return "User ID is required to fetch portfolio information."
-            
-            portfolio = Portfolio.query.filter_by(user_id=user_id).all()
-            if not portfolio:
-                return "No portfolio found for the user."
-            
-            portfolio_details = []
-            for item in portfolio:
-                stock = Stocks.query.get(item.stock_id)
-                portfolio_details.append({
-                    "stock": stock.company_name,
-                    "ticker": stock.ticker_symbol,
-                    "quantity": item.quantity,
-                    "purchase_price": float(item.purchase_price),
-                    "current_price": float(stock.current_price),
-                    "purchase_date": item.purchase_date.strftime("%Y-%m-%d")
-                })
-            
-            return {"portfolio": portfolio_details}
-        
-        # Handle funds queries
-        if 'funds' in query.lower():
-            if not user_id:
-                return "User ID is required to fetch funds information."
-            
-            funds = Funds.query.filter_by(user_id=user_id).first()
-            if not funds:
-                return "No funds information found for the user."
-            if funds.last_updated and isinstance(funds.last_updated, datetime):
-                last_updated = funds.last_updated.strftime("%Y-%m-%d %H:%M:%S")
-            else:
-                last_updated = str(funds.last_updated)
-            response = {
-                "available_balance": float(funds.available_balance),  # Ensure it's a JSON-compatible type
-                "total_balance": float(funds.total_balance),          # Ensure it's a JSON-compatible type
-                "last_updated": last_updated
-            }
-            return json.dumps(response)
-        
-        # Default Gemini response
-        return "I didn't understand your query. Can you rephrase it?"
-    
-    except Exception as e:
-        print(f"Error in Gemini response: {str(e)}")
-        return f"An error occurred: {str(e)}"
 
-# Routes
+# index_name = "combineddataindex"
+# embeddings = HuggingFaceEmbeddings(
+#     model_name="sentence-transformers/all-MiniLM-L6-v2"
+# )
+# docsearch = PineconeVectorStore.from_existing_index(
+#     index_name=index_name,
+#     embedding=embeddings,
+#     namespace=""
+# )
+
+# template = """You are a stock information assistant that helps users find details about stocks and their portfolios.
+#             Use the following pieces of context to answer the question at the end.
+#             If any information is missing from the database, provide a general answer based on your knowledge.
+
+#             {context}
+
+#             Question: {question}
+#             Your response:"""
+
+# PROMPT = PromptTemplate(
+#     template=template,
+#     input_variables=["context", "question"]
+# )
+
+# llm = ChatGroq(
+#     model_name="llama3-8b-8192",  # Change to an appropriate model for stock-related queries
+#     api_key="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",
+#     temperature=0
+# )
+
+# qa_chain = RetrievalQA.from_chain_type(
+#     llm=llm,
+#     chain_type="stuff",
+#     retriever=docsearch.as_retriever(search_kwargs={"k": 3}),
+#     return_source_documents=True,
+#     chain_type_kwargs={"prompt": PROMPT}
+# )
+
+
+def initialize_recommendation_system():
+    try:
+        # Initialize Groq
+        groq_client = Groq(api_key="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")
+
+        # Initialize embeddings
+        embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+
+        # Initialize Pinecone
+        pc = Pinecone(api_key="pcsk_7YQanE_AP9y5db9N5vQaoUYC2h6bxvr92sEPyXzVBUcotcvBubtsEqsfkDaLQ6LrGwWRnw")
+
+        # Get the index for stock data
+        index_name = "combineddataindex"  # Change to the stock-related index name
+        index = pc.Index(index_name)
+
+        # Check index stats
+        index_stats = index.describe_index_stats()
+
+        # Initialize vector store
+        docsearch = PineconeVectorStore.from_existing_index(
+            index_name=index_name,
+            embedding=embeddings,
+            namespace=""
+        )
+
+        # Initialize LLM (for stock-related information)
+        llm = ChatGroq(
+            model_name="llama3-8b-8192",  # Change to an appropriate model for stock-related queries
+            api_key="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",
+            temperature=0
+        )
+
+        # Define prompt template for stock-related information
+        template = """You are a stock information assistant that helps users find details about stocks and their portfolios.
+        Use the following pieces of context to answer the question at the end.
+        If any information is missing from the database, provide a general answer based on your knowledge.
+
+        {context}
+
+        Question: {question}
+        Your response:"""
+
+        PROMPT = PromptTemplate(
+            template=template,
+            input_variables=["context", "question"]
+        )
+
+        # Create QA chain for stock-related queries
+        qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",
+            retriever=docsearch.as_retriever(search_kwargs={"k": 1}),
+            return_source_documents=True,
+            chain_type_kwargs={"prompt": PROMPT}
+        )
+        return qa_chain
+    except Exception as e:
+        # Handle any exceptions that occur during the process
+        return f"An error occurred while retrieving the context: {str(e)}"
+
+# Function to retrieve ranked context based on user_id and query
+def retrieve_ranked_context(user_id, query):
+    try:
+        # Retrieve top 100 matches from the vector store
+        results = docsearch.similarity_search(query, k=100)
+
+        # Filter results to only include those related to the given user_id
+        user_specific_results = [doc for doc in results if doc.metadata.get('user_id') == user_id]
+
+        # Sort by relevant fields (e.g., stock price or portfolio details)
+        ranked_results = sorted(
+            user_specific_results,
+            key=lambda x: float(x.metadata.get("price", 0)),  # Sort by stock price or other relevant field
+            reverse=True
+        )
+
+        # If no results are found for the user, provide a general answer
+        if not ranked_results:
+            return "Sorry, I couldn't find any specific information for this user. Here's some general information about stocks and portfolios."
+
+        # Create context from the top 3 results
+        context = "\n".join([doc.page_content for doc in ranked_results[:3]])  # Top 3 results
+        return context
+
+    except Exception as e:
+        # Handle any exceptions that occur during the process
+        return f"An error occurred while retrieving the context: {str(e)}"
+
+
+def get_gemini_response(query, user_id=None):
+    try:
+        with io.StringIO() as buf, redirect_stdout(buf):
+            # Retrieve context specific to the user
+            context = retrieve_ranked_context(user_id, query)
+            qa_input = {"context": context, "query": query}
+            result = qa_chain(qa_input)
+
+        # Return the final result without any intermediate prints
+        return result['result']
+    except Exception as e:
+        # Handle any exceptions that occur during the process
+        return {"error": f"An error occurred: {str(e)}"}
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
+
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
@@ -148,7 +256,7 @@ def signup():
         gender = request.form.get('gender')
         email = request.form.get('email')
         password = request.form.get('password')
-        
+
         entry = User_info(
             name=first_name, Surname=surname, DOB_Day=day, DOB_Month=month,
             DOB_YEAR=year, Gender=gender, Mobile_Number_Or_Email=email, Password=password
@@ -159,14 +267,15 @@ def signup():
         return redirect(url_for('login'))
     return render_template('signup.html')
 
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         email_or_phone = request.form.get('email_phone')
         password = request.form.get('password')
-        
+
         user = User_info.query.filter_by(Mobile_Number_Or_Email=email_or_phone, Password=password).first()
-        
+
         if user:
             session['user_id'] = user.id
             session['user_name'] = f"{user.name} {user.Surname}"
@@ -176,16 +285,18 @@ def login():
             flash('Invalid email/phone number or password. Please try again.', 'danger')
     return render_template('login.html')
 
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for('login'))
 
+
 @app.route("/portfolio")
 def portfolio():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
+
     # Fetch user's portfolio with stock details
     portfolio_items = db.session.query(
         Portfolio, Stocks
@@ -202,10 +313,10 @@ def portfolio():
     price_dict = {stock_id: price for stock_id, price in stock_prices}
     # Calculate total portfolio value and returns
     total_value = Decimal('0')
-    
+
     # Format portfolio data for template
     holdings = []
-    total_value=0
+    total_value = 0
     for portfolio, stocks in portfolio_items:
         current_price = Decimal(price_dict.get(stocks.stock_id, 100))  # Fallback if price not found
         holding_value = current_price * Decimal(portfolio.quantity)
@@ -216,7 +327,7 @@ def portfolio():
         purchase_value = Decimal(portfolio.purchase_price) * Decimal(portfolio.quantity)
         return_pct = ((current_value - purchase_value) / purchase_value * 100) if purchase_value > 0 else 0
         weight = (current_value / total_value * 100) if total_value > 0 else 0
-        
+
         holdings.append({
             'stock_name': stocks.company_name,
             'shares': portfolio.quantity,
@@ -237,6 +348,8 @@ def portfolio():
         available_balance=user_funds.available_balance,
         holdings=holdings
     )
+
+
 @app.route('/chatbot', methods=['GET', 'POST'])
 def chatbot():
     if request.method == 'GET':
@@ -274,7 +387,7 @@ def chatbot():
     except Exception as e:
         print(f"Server Error: {str(e)}")  # For debugging
         return jsonify({"response": "Internal server error"}), 500
-    
+     
 @app.route('/tradingview')
 def tradingview():
     return render_template('tradingview.html')
