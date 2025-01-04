@@ -3,47 +3,409 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="TradingView Advanced Chart Widget">
-  <title>TradingView Advanced Chart</title>
+  <title>Stock Chart</title>
+  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <style>
-    body, html {
+    body {
       margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden; /* Prevent scrolling */
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(to right, #2c3e50, #34495e);
+      color: #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
     }
-    .tradingview-widget-container {
-      width: 100%;
-      height: 100%;
+
+    #chart-container {
+      width: 80%;
+      height: 80%;
+      display: flex;
+      flex-direction: column;
+      border-radius: 10px;
+      box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+      background: #1e2a36;
+    }
+
+    .button-container {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 10px 10px 0 0;
+      flex-wrap: wrap;
+    }
+
+    .stock-button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 5px;
+      background: #34495e;
+      color: #ecf0f1;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s ease;
+      min-width: 120px;
+    }
+
+    .stock-button:hover {
+      background: #2c3e50;
+      transform: translateY(-2px);
+    }
+
+    .stock-button.active {
+      background: #2980b9;
+      box-shadow: 0 0 10px rgba(41, 128, 185, 0.5);
+    }
+
+    #chart {
+      flex: 3;
+      padding: 10px;
+    }
+
+    #volume-chart {
+      flex: 1;
+      border-radius: 0 0 10px 10px;
+      padding: 10px;
+    }
+
+    .title {
+      text-align: center;
+      font-size: 2em;
+      font-weight: bold;
+      color: #d1d4dc;
+      margin: 20px;
+    }
+
+    .stock-info {
+      text-align: center;
+      margin: 10px;
+      font-size: 1.2em;
+      color: #ecf0f1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .stock-info span {
+      font-weight: bold;
+    }
+
+    .error {
+      color: #e74c3c;
+      text-align: center;
+      font-size: 1.2em;
+      margin-top: 20px;
+    }
+
+    .trade-button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s ease;
+      min-width: 100px;
+    }
+
+    .buy-button {
+      background: #27ae60;
+      color: white;
+    }
+
+    .sell-button {
+      background: #c0392b;
+      color: white;
+    }
+
+    .trade-button:hover {
+      transform: translateY(-2px);
+      opacity: 0.9;
+    }
+
+    .modal-content {
+      background: #2c3e50;
+      color: #ecf0f1;
+    }
+
+    .modal-header {
+      border-bottom: 1px solid #34495e;
+    }
+
+    .modal-footer {
+      border-top: 1px solid #34495e;
+    }
+
+    .btn-buy {
+      background: #27ae60;
+      color: white;
+    }
+
+    .btn-sell {
+      background: #c0392b;
+      color: white;
+    }
+
+    .form-control {
+      background-color: #34495e;
+      border: 1px solid #456789;
+      color: #ecf0f1;
+    }
+
+    .form-control:focus {
+      background-color: #34495e;
+      border-color: #2980b9;
+      color: #ecf0f1;
+      box-shadow: 0 0 0 0.25rem rgba(41, 128, 185, 0.25);
+    }
+
+    .form-control:disabled, .form-control[readonly] {
+      background-color: #2c3e50;
+      border-color: #456789;
+      color: #95a5a6;
     }
   </style>
 </head>
 <body>
-  <!-- TradingView Widget BEGIN -->
-  <div class="tradingview-widget-container">
-    <div id="tradingview_widget"></div>
+  <div id="chart-container">
+    <div class="title">Saudi Stock Market - Real-time Data</div>
+    <div class="button-container">
+      <button class="stock-button active" data-symbol="2030.SR">SARCO</button>
+      <button class="stock-button" data-symbol="2222.SR">SAUDI ARAMCO</button>
+      <button class="stock-button" data-symbol="2380.SR">PETRO RABIGH</button>
+      <button class="stock-button" data-symbol="2381.SR">ARABIAN DRILLING</button>
+      <button class="stock-button" data-symbol="2382.SR">ADES</button>
+      <button class="stock-button" data-symbol="4030.SR">BAHRI</button>
+      <button class="stock-button" data-symbol="4200.SR">ALDREES</button>
+    </div>
+    <div class="stock-info" id="stock-info">
+      <div>
+        <span>Symbol:</span> <span id="current-symbol">2222.SR</span>
+      </div>
+      <div>
+        <span>Current Price: SAR</span> <span id="current-price">0.00</span>
+      </div>
+      <div>
+        <button class="trade-button buy-button" onclick="openTradeModal('buy')">Buy Stock</button>
+        <button class="trade-button sell-button" onclick="openTradeModal('sell')">Sell Stock</button>
+      </div>
+    </div>
+    <div id="chart"></div>
+    <div id="volume-chart"></div>
   </div>
 
-  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-  <script type="text/javascript">
-    // Initialize the TradingView widget
-    new TradingView.widget({
-      container_id: "tradingview_widget",
-      width: "100%",
-      height: "100%",
-      symbol: "NASDAQ:AAPL", // Adjust this to the symbol you want to display
-      interval: "D",         // Daily interval
-      timezone: "Etc/UTC",
-      theme: "dark",
-      style: "1",            // Bar style
-      locale: "en",
-      toolbar_bg: "#0000FF", // Blue toolbar background
-      enable_publishing: false,
-      hide_side_toolbar: false, // Show side toolbar
-      allow_symbol_change: true // Allow users to change the symbol
+  <!-- Trade Modal -->
+  <div class="modal fade" id="tradeModal" tabindex="-1" aria-labelledby="tradeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="tradeModalLabel"></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="tradeForm">
+            <input type="hidden" id="tradeType" name="tradeType">
+            <div class="mb-3">
+              <label for="stockName" class="form-label">Stock Name</label>
+              <input type="text" class="form-control" id="stockName" readonly>
+            </div>
+            <div class="mb-3">
+              <label for="quantity" class="form-label">Quantity</label>
+              <input type="number" class="form-control" id="quantity" name="quantity" min="1" required>
+            </div>
+          </form>
+          <div class="text-danger" id="modalError" style="display: none;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" id="confirmTradeBtn" class="btn">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Create the main candlestick chart
+    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+      layout: {
+        backgroundColor: '#000000',
+        textColor: '#d1d4dc',
+      },
+      grid: {
+        vertLines: { color: '#2b2f38' },
+        horzLines: { color: '#2b2f38' },
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+      },
+      priceScale: {
+        borderColor: '#555661',
+      },
+      timeScale: {
+        borderColor: '#555661',
+      },
+    });
+
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderUpColor: '#26a69a',
+      borderDownColor: '#ef5350',
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+    });
+
+    const volumeChart = LightweightCharts.createChart(document.getElementById('volume-chart'), {
+      layout: {
+        backgroundColor: '#000000',
+        textColor: '#d1d4dc',
+      },
+      grid: {
+        vertLines: { color: '#2b2f38' },
+        horzLines: { color: '#2b2f38' },
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+      },
+      priceScale: {
+        borderColor: '#555661',
+      },
+      timeScale: {
+        visible: false,
+      },
+    });
+
+    const volumeSeries = volumeChart.addHistogramSeries({
+      priceScaleId: '',
+      scaleMargins: {
+        top: 0.8,
+        bottom: 0,
+      },
+    });
+
+    // Handle stock button clicks
+    let currentSymbol = '2222.SR';
+    const buttons = document.querySelectorAll('.stock-button');
+    const tradeModal = new bootstrap.Modal(document.getElementById('tradeModal'));
+    
+    buttons.forEach(button => {
+      button.addEventListener('click', () => {
+        buttons.forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+        currentSymbol = button.dataset.symbol;
+        document.getElementById('current-symbol').textContent = currentSymbol;
+        fetchStockData();
+      });
+    });
+
+    function openTradeModal(type) {
+      document.getElementById('tradeType').value = type;
+      document.getElementById('stockName').value = currentSymbol;
+      document.getElementById('modalError').style.display = 'none';
+      document.getElementById('quantity').value = '';
+      
+      // Update modal title and button based on trade type
+      const isBuy = type === 'buy';
+      document.getElementById('tradeModalLabel').textContent = isBuy ? 'Buy Stock' : 'Sell Stock';
+      
+      const confirmBtn = document.getElementById('confirmTradeBtn');
+      confirmBtn.textContent = isBuy ? 'Buy Stock' : 'Sell Stock';
+      confirmBtn.className = `btn ${isBuy ? 'btn-buy' : 'btn-sell'}`;
+      
+      tradeModal.show();
+    }
+
+    async function submitTrade() {
+      const type = document.getElementById('tradeType').value;
+      const stockName = document.getElementById('stockName').value;
+      const quantity = document.getElementById('quantity').value;
+
+      if (!quantity || quantity <= 0) {
+        document.getElementById('modalError').textContent = 'Please enter a valid quantity.';
+        document.getElementById('modalError').style.display = 'block';
+        return;
+      }
+
+      try {
+        const response = await fetch(`/${type}_stock`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: `stock_name=${encodeURIComponent(stockName)}&quantity=${encodeURIComponent(quantity)}`
+        });
+
+        if (response.ok) {
+          tradeModal.hide();
+          alert(`Stock ${type === 'buy' ? 'bought' : 'sold'} successfully!`);
+          location.reload();
+        } else {
+          const error = await response.text();
+          document.getElementById('modalError').textContent = error || `Failed to ${type} stock. Please try again.`;
+          document.getElementById('modalError').style.display = 'block';
+        }
+      } catch (error) {
+        document.getElementById('modalError').textContent = 'An error occurred while processing your request.';
+        document.getElementById('modalError').style.display = 'block';
+      }
+    }
+
+    // Add event listener for the confirm button
+    document.getElementById('confirmTradeBtn').addEventListener('click', submitTrade);
+
+    async function fetchStockData() {
+      try {
+        const response = await fetch(`/api/stock_data?symbol=${currentSymbol}`);
+        const { historical, latest } = await response.json();
+
+        if (historical && historical.length) {
+          const candlestickData = historical.map(dataPoint => ({
+            time: Math.floor(new Date(dataPoint.timestamp).getTime() / 1000),
+            open: dataPoint.open,
+            high: dataPoint.high,
+            low: dataPoint.low,
+            close: dataPoint.close,
+          }));
+
+          const volumeData = historical.map(dataPoint => ({
+            time: Math.floor(new Date(dataPoint.timestamp).getTime() / 1000),
+            value: dataPoint.volume,
+            color: dataPoint.close > dataPoint.open ? '#26a69a' : '#ef5350',
+          }));
+
+          candleSeries.setData(candlestickData);
+          volumeSeries.setData(volumeData);
+        }
+
+        if (latest) {
+          document.getElementById('current-price').textContent = latest.close.toFixed(2);
+        }
+
+      } catch (error) {
+        console.error('Error fetching stock data:', error);
+        document.getElementById('stock-info').innerHTML = '<span class="error">Error fetching data</span>';
+      }
+    }
+
+    // Fetch data on load and periodically update the chart
+    fetchStockData();
+    setInterval(fetchStockData, 1000);
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      chart.applyOptions({
+        width: document.getElementById('chart').clientWidth,
+        height: document.getElementById('chart').clientHeight,
+      });
+      volumeChart.applyOptions({
+        width: document.getElementById('volume-chart').clientWidth,
+        height: document.getElementById('volume-chart').clientHeight,
+      });
     });
   </script>
-  <!-- TradingView Widget END -->
 </body>
 </html>

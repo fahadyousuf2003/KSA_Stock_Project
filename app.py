@@ -7,18 +7,16 @@ from flask import jsonify
 from sqlalchemy import DECIMAL
 import pymysql
 from decimal import Decimal
-import streamlit as st
 import os
 import io
 from contextlib import redirect_stdout
 import json
 import pathlib
 import textwrap
-from datetime import datetime
+from datetime import date
 from langchain_google_genai import ChatGoogleGenerativeAI
 import google.generativeai as genai
 from datetime import date
-import streamlit as st
 import traceback
 from groq import Groq
 from langchain_groq import ChatGroq
@@ -29,7 +27,16 @@ from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from pinecone import Pinecone
 from IPython.display import display
 from IPython.display import Markdown
-import pinecone
+import pinecone 
+import yfinance as yf
+import threading
+import time
+from threading import Lock
+import logging
+
+latest_data = {}
+historical_data = {}
+data_lock = Lock()
 nlp = spacy.load("en_core_web_sm")
 pymysql.install_as_MySQLdb()
 
@@ -296,7 +303,7 @@ def logout():
 def portfolio():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-
+    
     # Fetch user's portfolio with stock details
     portfolio_items = db.session.query(
         Portfolio, Stocks
@@ -305,29 +312,30 @@ def portfolio():
     ).filter(
         Portfolio.user_id == session['user_id']
     ).all()
-    stock_prices = db.session.query(
-        StockPriceHistory.stock_id, StockPriceHistory.price
-    ).filter(
-        StockPriceHistory.date == '2024-12-20'
-    ).all()
-    price_dict = {stock_id: price for stock_id, price in stock_prices}
+    
+    # Fetch current prices from yfinance
+    stock_symbols = [stocks.ticker_symbol for _, stocks in portfolio_items]
+    stock_data = yf.download(stock_symbols, period="1d", interval="1d", progress=False)
+    
+    # Extract the closing prices
+    current_prices = stock_data['Close'].iloc[-1].to_dict() if not stock_data.empty else {}
+    
     # Calculate total portfolio value and returns
     total_value = Decimal('0')
-
-    # Format portfolio data for template
     holdings = []
-    total_value = 0
+    
     for portfolio, stocks in portfolio_items:
-        current_price = Decimal(price_dict.get(stocks.stock_id, 100))  # Fallback if price not found
+        current_price = Decimal(current_prices.get(stocks.ticker_symbol, 100))  # Fallback if price not found
         holding_value = current_price * Decimal(portfolio.quantity)
         total_value += holding_value
+
     for portfolio, stocks in portfolio_items:
-        current_price = Decimal(price_dict.get(stocks.stock_id, 100))  # Fallback if price not found
+        current_price = Decimal(current_prices.get(stocks.ticker_symbol, 100))  # Fallback if price not found
         current_value = current_price * Decimal(portfolio.quantity)
         purchase_value = Decimal(portfolio.purchase_price) * Decimal(portfolio.quantity)
         return_pct = ((current_value - purchase_value) / purchase_value * 100) if purchase_value > 0 else 0
         weight = (current_value / total_value * 100) if total_value > 0 else 0
-
+        
         holdings.append({
             'stock_name': stocks.company_name,
             'shares': portfolio.quantity,
@@ -336,16 +344,19 @@ def portfolio():
             'weight': float(weight),
             'return': float(return_pct)
         })
-        user_funds = Funds.query.filter_by(user_id=session['user_id']).first()
-        if user_funds:
-            user_funds.total_balance = float(user_funds.available_balance) + float(total_value)
-            db.session.commit()
+    
+    # Update user's funds
+    user_funds = Funds.query.filter_by(user_id=session['user_id']).first()
+    if user_funds:
+        user_funds.total_balance = float(user_funds.available_balance) + float(total_value)
+        db.session.commit()
 
+    # Render portfolio template
     return render_template(
         "portfolio.html",
         user_name=session.get('user_name'),
         total_value=float(total_value),
-        available_balance=user_funds.available_balance,
+        available_balance=user_funds.available_balance if user_funds else 0,
         holdings=holdings
     )
 
@@ -599,7 +610,90 @@ def sell_stock_logic(stock_name, quantity):
         db.session.rollback()
         return jsonify({"response": f"Error: {str(e)}"}), 500
 
+
+def fetch_historical_data(symbol):
+    """Fetch historical data for a specific stock symbol."""
+    global historical_data
+    try:
+        stock = yf.Ticker(symbol)
+        hist = stock.history(period="1mo", interval="1h")
+        if not hist.empty:
+            with data_lock:
+                historical_data[symbol] = [
+                    {
+                        "timestamp": row.name.isoformat(),
+                        "open": round(row["Open"], 2),
+                        "high": round(row["High"], 2),
+                        "low": round(row["Low"], 2),
+                        "close": round(row["Close"], 2),
+                        "volume": int(row["Volume"])
+                    }
+                    for index, row in hist.iterrows()
+                ]
+    except Exception as e:
+        logging.error(f"Error fetching historical data for {symbol}: {e}")
+
+def fetch_realtime_data(symbol):
+    """Fetch real-time data for a specific stock symbol."""
+    global latest_data
+    while True:
+        try:
+            stock = yf.Ticker(symbol)
+            hist = stock.history(period="1d", interval="1m")
+            if not hist.empty:
+                last_row = hist.iloc[-1]
+                with data_lock:
+                    latest_data[symbol] = {
+                        "timestamp": last_row.name.isoformat(),
+                        "open": round(last_row["Open"], 2),
+                        "high": round(last_row["High"], 2),
+                        "low": round(last_row["Low"], 2),
+                        "close": round(last_row["Close"], 2),
+                        "volume": int(last_row["Volume"])
+                    }
+        except Exception as e:
+            logging.error(f"Error fetching real-time data for {symbol}: {e}")
+        time.sleep(1)
+
+@app.route("/api/stock_data")
+def get_stock_data():
+    symbol = request.args.get('symbol', '2222.SR')  # Default to ARAMCO if no symbol provided
+    
+    with data_lock:
+        return jsonify({
+            "historical": historical_data.get(symbol, []),
+            "latest": latest_data.get(symbol, {})
+        })
+
+def start_stock_threads():
+    """Start threads for each stock symbol."""
+    stock_symbols = [
+        "2030.SR",  # SARCO
+        "2222.SR",  # SAUDI ARAMCO
+        "2380.SR",  # PETRO RABIGH
+        "2381.SR",  # ARABIAN DRILLING
+        "2382.SR",  # ADES
+        "4030.SR",  # BAHRI
+        "4200.SR"   # ALDREES
+    ]
+    
+    for symbol in stock_symbols:
+        # Start historical data thread
+        threading.Thread(
+            target=fetch_historical_data,
+            args=(symbol,),
+            daemon=True
+        ).start()
+        
+        # Start real-time data thread
+        threading.Thread(
+            target=fetch_realtime_data,
+            args=(symbol,),
+            daemon=True
+        ).start()
+
 if __name__ == '__main__':
+    start_stock_threads()
     with app.app_context():
         db.create_all()
     app.run(debug=True)

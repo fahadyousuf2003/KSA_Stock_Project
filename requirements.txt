@@ -5,7 +5,6 @@ langchain-google-genai
 google-generativeai
 pydantic
 spacy
-streamlit
 groq
 langchain-groq
 langchain
@@ -15,3 +14,5 @@ pinecone-client
 sentence-transformers
 tf-keras
 tiktoken
+yfinance
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.6.0/en_core_web_sm-3.6.0.tar.gz

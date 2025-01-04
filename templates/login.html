@@ -133,7 +133,7 @@
             >
             <label for="password">Password</label>
             <input 
-                type="text" 
+                type="password" 
                 id="password" 
                 name="password" 
                 placeholder="eg. 1234" 
@@ -141,17 +141,6 @@
             >
             <button type="submit">Submit</button>
         </form>
-
-        <!-- Alternative Login Options -->
-        <div class="divider">or</div>
-        <div class="alt-login">
-            <button>
-                <img src="{{ url_for('static', filename='icons/google-icon.png') }}" alt="Google Logo"> Continue with Google
-            </button>
-            <button>
-                <img src="{{ url_for('static', filename='icons/apple-icon.png') }}" alt="Apple Logo"> Continue with Apple
-            </button>
-        </div>
 
         <!-- Create Account Link -->
         <p class="create-account">
