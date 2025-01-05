@@ -40,13 +40,13 @@ data_lock = Lock()
 nlp = spacy.load("en_core_web_sm")
 pymysql.install_as_MySQLdb()
 
-pc = Pinecone(api_key="pcsk_7YQanE_AP9y5db9N5vQaoUYC2h6bxvr92sEPyXzVBUcotcvBubtsEqsfkDaLQ6LrGwWRnw")
+pc = Pinecone(api_key="pcsk_4bw8VS_9RhtdAiBFfpZKN8p54VpYBVZVwBCGF7DCPKYVHVwVh6LWcfUCowPa6a1UEUwUCo")
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 app.config["SQLALCHEMY_DATABASE_URI"] = 'mysql://root:@localhost/KSA_Stock_Project'
 db = SQLAlchemy(app)
-genai.configure(api_key="AIzaSyA8CuC1z-d7kSK00dcve5ZorUnGFRoDuI0")
-
+import os
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 # Database Models
 class User_info(db.Model):
@@ -102,64 +102,26 @@ class Funds(db.Model):
     last_updated = db.Column(db.DateTime, nullable=False)
 
 
-# index_name = "combineddataindex"
-# embeddings = HuggingFaceEmbeddings(
-#     model_name="sentence-transformers/all-MiniLM-L6-v2"
-# )
-# docsearch = PineconeVectorStore.from_existing_index(
-#     index_name=index_name,
-#     embedding=embeddings,
-#     namespace=""
-# )
-
-# template = """You are a stock information assistant that helps users find details about stocks and their portfolios.
-#             Use the following pieces of context to answer the question at the end.
-#             If any information is missing from the database, provide a general answer based on your knowledge.
-
-#             {context}
-
-#             Question: {question}
-#             Your response:"""
-
-# PROMPT = PromptTemplate(
-#     template=template,
-#     input_variables=["context", "question"]
-# )
-
-# llm = ChatGroq(
-#     model_name="llama3-8b-8192",  # Change to an appropriate model for stock-related queries
-#     api_key="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",
-#     temperature=0
-# )
-
-# qa_chain = RetrievalQA.from_chain_type(
-#     llm=llm,
-#     chain_type="stuff",
-#     retriever=docsearch.as_retriever(search_kwargs={"k": 3}),
-#     return_source_documents=True,
-#     chain_type_kwargs={"prompt": PROMPT}
-# )
-
-
 def initialize_recommendation_system():
     try:
         # Initialize Groq
         groq_client = Groq(api_key="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")
+        print("Groq initialized successfully.")
 
         # Initialize embeddings
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
+        print("Embeddings initialized successfully.")
 
         # Initialize Pinecone
-        pc = Pinecone(api_key="pcsk_7YQanE_AP9y5db9N5vQaoUYC2h6bxvr92sEPyXzVBUcotcvBubtsEqsfkDaLQ6LrGwWRnw")
+        pc = Pinecone(api_key="pcsk_4bw8VS_9RhtdAiBFfpZKN8p54VpYBVZVwBCGF7DCPKYVHVwVh6LWcfUCowPa6a1UEUwUCo")
+        print("Pinecone initialized successfully.")
 
         # Get the index for stock data
-        index_name = "combineddataindex"  # Change to the stock-related index name
+        index_name = "combineddataindex"
         index = pc.Index(index_name)
-
-        # Check index stats
-        index_stats = index.describe_index_stats()
+        print(f"Index '{index_name}' loaded successfully.")
 
         # Initialize vector store
         docsearch = PineconeVectorStore.from_existing_index(
@@ -167,30 +129,21 @@ def initialize_recommendation_system():
             embedding=embeddings,
             namespace=""
         )
+        print("Vector store initialized successfully.")
 
-        # Initialize LLM (for stock-related information)
+        # Initialize LLM
         llm = ChatGroq(
-            model_name="llama3-8b-8192",  # Change to an appropriate model for stock-related queries
+            model_name="llama3-8b-8192",
             api_key="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",
             temperature=0
         )
+        print("LLM initialized successfully.")
 
-        # Define prompt template for stock-related information
-        template = """You are a stock information assistant that helps users find details about stocks and their portfolios.
-        Use the following pieces of context to answer the question at the end.
-        If any information is missing from the database, provide a general answer based on your knowledge.
+        # Define prompt template
+        template = """You are a stock information assistant..."""
+        PROMPT = PromptTemplate(template=template, input_variables=["context", "question"])
 
-        {context}
-
-        Question: {question}
-        Your response:"""
-
-        PROMPT = PromptTemplate(
-            template=template,
-            input_variables=["context", "question"]
-        )
-
-        # Create QA chain for stock-related queries
+        # Create QA chain
         qa_chain = RetrievalQA.from_chain_type(
             llm=llm,
             chain_type="stuff",
@@ -198,14 +151,26 @@ def initialize_recommendation_system():
             return_source_documents=True,
             chain_type_kwargs={"prompt": PROMPT}
         )
+        print("QA chain initialized successfully.")
         return qa_chain
     except Exception as e:
-        # Handle any exceptions that occur during the process
         return f"An error occurred while retrieving the context: {str(e)}"
 
 # Function to retrieve ranked context based on user_id and query
+
 def retrieve_ranked_context(user_id, query):
+    embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+    
+    index_name = "combineddataindex"
+    docsearch = PineconeVectorStore.from_existing_index(
+            index_name=index_name,
+            embedding=embeddings,
+            namespace=""
+        )
     try:
+
         # Retrieve top 100 matches from the vector store
         results = docsearch.similarity_search(query, k=100)
 
@@ -221,7 +186,7 @@ def retrieve_ranked_context(user_id, query):
 
         # If no results are found for the user, provide a general answer
         if not ranked_results:
-            return "Sorry, I couldn't find any specific information for this user. Here's some general information about stocks and portfolios."
+            return "Sorry, I couldn't find any specific information for this user. "
 
         # Create context from the top 3 results
         context = "\n".join([doc.page_content for doc in ranked_results[:3]])  # Top 3 results
@@ -231,6 +196,10 @@ def retrieve_ranked_context(user_id, query):
         # Handle any exceptions that occur during the process
         return f"An error occurred while retrieving the context: {str(e)}"
 
+qa_chain = initialize_recommendation_system()
+print(f"QA Chain: {qa_chain}")
+if not callable(qa_chain):
+    print(f"Initialization error: qa_chain is not callable. Value: {qa_chain}")
 
 def get_gemini_response(query, user_id=None):
     try:
@@ -325,12 +294,12 @@ def portfolio():
     holdings = []
     
     for portfolio, stocks in portfolio_items:
-        current_price = Decimal(current_prices.get(stocks.ticker_symbol, 100))  # Fallback if price not found
+        current_price = Decimal(current_prices.get(stocks.company_name, 100))  # Fallback if price not found
         holding_value = current_price * Decimal(portfolio.quantity)
         total_value += holding_value
 
     for portfolio, stocks in portfolio_items:
-        current_price = Decimal(current_prices.get(stocks.ticker_symbol, 100))  # Fallback if price not found
+        current_price = Decimal(current_prices.get(stocks.company_name, 100))  # Fallback if price not found
         current_value = current_price * Decimal(portfolio.quantity)
         purchase_value = Decimal(portfolio.purchase_price) * Decimal(portfolio.quantity)
         return_pct = ((current_value - purchase_value) / purchase_value * 100) if purchase_value > 0 else 0
@@ -360,7 +329,7 @@ def portfolio():
         holdings=holdings
     )
 
-
+qa_chain = initialize_recommendation_system()
 @app.route('/chatbot', methods=['GET', 'POST'])
 def chatbot():
     if request.method == 'GET':
@@ -369,32 +338,34 @@ def chatbot():
     try:
         data = request.get_json()
         if not data or 'query' not in data:
-            return {"response": "Invalid input. Please provide a valid query."}, 400
+            return jsonify({"response": "Invalid input. Please provide a valid query."}), 400
 
         query = data.get('query')
-        user_id =  session['user_id']
+        user_id = session.get('user_id', None)
         if not query:
             return jsonify({"response": "Please provide a valid question."})
 
         if 'buy' in query.lower():
             stock_name, quantity = extract_stock_info(query)
             if stock_name and quantity:
-                # Call the buy_stock function with extracted stock name and quantity
                 return buy_stock_logic(stock_name, quantity)
             else:
                 return jsonify({"response": "Unable to extract stock name and quantity from the query."})
+        
         if 'sell' in query.lower():
             stock_name, quantity = extract_stock_info(query)
             if stock_name and quantity:
                 return sell_stock_logic(stock_name, quantity)
             else:
                 return jsonify({"response": "Unable to extract stock name and quantity from the query."})
-
-        try:
-            response = get_gemini_response(query, user_id)
+        if not qa_chain:
+            return jsonify({"response": "Recommendation system is not initialized."})
+        response = get_gemini_response(query, user_id)
+        print (response)
+        if isinstance(response, dict):  # Handle dictionary response
+            return jsonify(response)
+        else:
             return jsonify({"response": response})
-        except Exception as e:
-            return jsonify({"response": f"Error: {str(e)}"})
     except Exception as e:
         print(f"Server Error: {str(e)}")  # For debugging
         return jsonify({"response": "Internal server error"}), 500
