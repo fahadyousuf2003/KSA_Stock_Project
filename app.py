@@ -31,6 +31,7 @@ import pinecone
 import yfinance as yf
 import tiktoken
 import threading
+from threading import Thread 
 import time
 from threading import Lock
 import logging
@@ -700,7 +701,68 @@ def start_stock_threads():
             args=(symbol,),
             daemon=True
         ).start()
+def monitor_stock_price(user_id, stock_id, target_price, action):
+    """
+    Monitor stock price and execute the action when the target price is reached.
+    :param user_id: ID of the user
+    :param stock_id: ID of the stock
+    :param target_price: Target price for the action
+    :param action: 'buy' or 'sell'
+    """
+    while True:
+        stock = Stocks.query.get(stock_id)
+        if not stock:
+            print(f"Stock with ID {stock_id} not found.")
+            return
+        current_price = stock.current_price
+        if (action == 'buy' and current_price <= target_price) or (action == 'sell' and current_price >= target_price):
+            # Execute the trade
+            portfolio = Portfolio.query.filter_by(user_id=user_id, stock_id=stock_id).first()
+            funds = Funds.query.filter_by(user_id=user_id).first()
 
+            if action == 'buy':
+                # Example: Buying 10 stocks
+                quantity = 10
+                total_cost = current_price * quantity
+                if funds.available_balance >= total_cost:
+                    funds.available_balance -= total_cost
+                    db.session.add(Portfolio(user_id=user_id, stock_id=stock_id, quantity=quantity, purchase_price=current_price, purchase_date=time.strftime('%Y-%m-%d')))
+                    flash(f"Bought {quantity} shares of {stock.company_name} at {current_price}", "success")
+                else:
+                    flash("Insufficient funds to buy stock.", "danger")
+
+            elif action == 'sell':
+                if portfolio and portfolio.quantity > 0:
+                    total_sale = current_price * portfolio.quantity
+                    funds.available_balance += total_sale
+                    portfolio.quantity = 0  # Sell all
+                    flash(f"Sold all shares of {stock.company_name} at {current_price}", "success")
+                else:
+                    flash("No stocks to sell.", "danger")
+
+            db.session.commit()
+            return
+
+        time.sleep(60)  # Wait for 1 minute before checking again
+
+@app.route('/stop_loss', methods=['GET', 'POST'])
+def stop_loss():
+    if request.method == 'POST':
+        user_id = session['user_id']
+        stock_id = int(request.form['stock_id'])
+        target_price = Decimal(request.form['target_price'])
+        action = request.form['action']  # 'buy' or 'sell'
+
+        # Start monitoring in a separate thread
+        thread = Thread(target=monitor_stock_price, args=(user_id, stock_id, target_price, action))
+        thread.daemon = True
+        thread.start()
+
+        flash("Stop-loss monitoring started.", "info")
+        return redirect(url_for('stop_loss'))
+
+    stocks = Stocks.query.all()
+    return render_template('stock_loss.html', stocks=stocks)
 if __name__ == '__main__':
     start_stock_threads()
     with app.app_context():
