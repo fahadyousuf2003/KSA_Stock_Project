@@ -29,10 +29,12 @@ from IPython.display import display
 from IPython.display import Markdown
 import pinecone 
 import yfinance as yf
+import tiktoken
 import threading
 import time
 from threading import Lock
 import logging
+from langchain_core.documents import Document
 
 latest_data = {}
 historical_data = {}
@@ -102,119 +104,116 @@ class Funds(db.Model):
     last_updated = db.Column(db.DateTime, nullable=False)
 
 
-def initialize_recommendation_system():
-    try:
-        # Initialize Groq
-        groq_client = Groq(api_key="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")
-        print("Groq initialized successfully.")
+from sqlalchemy.orm import joinedload
+import pandas as pd
 
-        # Initialize embeddings
-        embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+# Perform the join
+with app.app_context():
+    query = (
+        db.session.query(
+            User_info.id.label("user_id"),
+            User_info.name.label("user_name"),
+            User_info.Surname.label("user_surname"),
+            User_info.Gender.label("user_gender"),
+            Stocks.stock_id.label("stock_id"),
+            Stocks.ticker_symbol.label("ticker_symbol"),
+            Stocks.company_name.label("company_name"),
+            Stocks.current_price.label("current_price"),
+            Stocks.sector.label("sector"),
+            StockPriceHistory.price.label("stock_price"),
+            StockPriceHistory.date.label("price_date"),
+            Portfolio.quantity.label("quantity"),
+            Portfolio.purchase_price.label("purchase_price"),
+            Portfolio.purchase_date.label("purchase_date"),
+            Funds.available_balance.label("available_balance"),
+            Funds.total_balance.label("total_balance"),
+            Funds.last_updated.label("fund_last_updated"),
         )
-        print("Embeddings initialized successfully.")
+        .join(Portfolio, User_info.id == Portfolio.user_id)
+        .join(Stocks, Portfolio.stock_id == Stocks.stock_id)
+        .join(StockPriceHistory, Stocks.stock_id == StockPriceHistory.stock_id)
+        .join(Funds, User_info.id == Funds.user_id)
+    )
 
-        # Initialize Pinecone
-        pc = Pinecone(api_key="pcsk_4bw8VS_9RhtdAiBFfpZKN8p54VpYBVZVwBCGF7DCPKYVHVwVh6LWcfUCowPa6a1UEUwUCo")
-        print("Pinecone initialized successfully.")
+    # Fetch all results
+    results = query.all()
 
-        # Get the index for stock data
-        index_name = "combineddataindex"
-        index = pc.Index(index_name)
-        print(f"Index '{index_name}' loaded successfully.")
+    # Convert query results to a list of dictionaries
+    data = [dict(row._mapping) for row in results]
 
-        # Initialize vector store
-        docsearch = PineconeVectorStore.from_existing_index(
-            index_name=index_name,
-            embedding=embeddings,
-            namespace=""
-        )
-        print("Vector store initialized successfully.")
+    # Create a Pandas DataFrame
+    combined_data = pd.DataFrame(data)
 
-        # Initialize LLM
-        llm = ChatGroq(
-            model_name="llama3-8b-8192",
-            api_key="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",
-            temperature=0
-        )
-        print("LLM initialized successfully.")
+    # Save the combined data to a CSV file
+    combined_data.to_csv('combined_data.csv', index=False)
+    print("Combined data has been successfully saved to 'combined_data.csv'!")
 
-        # Define prompt template
-        template = """You are a stock information assistant..."""
-        PROMPT = PromptTemplate(template=template, input_variables=["context", "question"])
+# Create combined information column
+combined_data['combined_info'] = combined_data.apply(
+    lambda row: (
+        f"User: {row['user_name']} {row['user_surname']} (Gender: {row['user_gender']}). "
+        f"Stock: {row['ticker_symbol']} - {row['company_name']} in {row['sector']} sector, "
+        f"current price: {row['current_price']}. "
+        f"Portfolio: {row['quantity']} shares purchased at {row['purchase_price']} on {row['purchase_date']}. "
+        f"Stock Price History: {row['stock_price']} on {row['price_date']}. "
+        f"Funds: Available balance: {row['available_balance']}, Total balance: {row['total_balance']} (Last updated: {row['fund_last_updated']})."
+    ),
+    axis=1
+)
+# Token encoding
+encoding = tiktoken.get_encoding('cl100k_base')
+max_tokens = 8000
 
-        # Create QA chain
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
-            retriever=docsearch.as_retriever(search_kwargs={"k": 1}),
-            return_source_documents=True,
-            chain_type_kwargs={"prompt": PROMPT}
-        )
-        print("QA chain initialized successfully.")
-        return qa_chain
-    except Exception as e:
-        return f"An error occurred while retrieving the context: {str(e)}"
+# Omit descriptions that are too long to embed
+combined_data["n_tokens"] = combined_data.combined_info.apply(lambda x: len(encoding.encode(x)))
+combined_data = combined_data[combined_data.n_tokens <= max_tokens]
 
-# Function to retrieve ranked context based on user_id and query
+# Use HuggingFace embeddings instead of OpenAI
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
 
-def retrieve_ranked_context(user_id, query):
-    embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
-        )
-    
-    index_name = "combineddataindex"
-    docsearch = PineconeVectorStore.from_existing_index(
-            index_name=index_name,
-            embedding=embeddings,
-            namespace=""
-        )
-    try:
+# Generate embeddings
+combined_data["vector"] = combined_data.combined_info.apply(lambda x: embeddings.embed_query(x))
+combined_data.to_pickle('combined_data.pkl')
+# Set the API key as an environment variable
+os.environ["PINECONE_API_KEY"] = "pcsk_7YQanE_AP9y5db9N5vQaoUYC2h6bxvr92sEPyXzVBUcotcvBubtsEqsfkDaLQ6LrGwWRnw"
 
-        # Retrieve top 100 matches from the vector store
-        results = docsearch.similarity_search(query, k=100)
+# Initialize Pinecone client
+pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+documents = [
+    Document(
+        page_content=row['combined_info'],
+        metadata={
+            'user_id': row['user_id'],
+        }
+    ) for _, row in combined_data.iterrows()
+]
+index_name = "combineddataindex"
+docsearch = PineconeVectorStore.from_documents(
+    documents=documents,
+    embedding=embeddings,
+    index_name=index_name
+)
+# Define LLM using Groq (Llama model)
+llm = ChatGroq(
+    model_name="llama3-8b-8192",  # or another Llama model available
+    api_key="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",
+    temperature=0
+)
+# Define custom prompt template for stock-related information specific to the user
+template = """You are a stock information assistant that helps users find details about stocks and their portfolios.
+Use the following pieces of context to answer the question at the end.
+If any information is missing from the database, provide a general answer based on your knowledge.
 
-        # Filter results to only include those related to the given user_id
-        user_specific_results = [doc for doc in results if doc.metadata.get('user_id') == user_id]
+{context}
 
-        # Sort by relevant fields (e.g., stock price or portfolio details)
-        ranked_results = sorted(
-            user_specific_results,
-            key=lambda x: float(x.metadata.get("price", 0)),  # Sort by stock price or other relevant field
-            reverse=True
-        )
+Question: {question}
+Your response:"""
 
-        # If no results are found for the user, provide a general answer
-        if not ranked_results:
-            return "Sorry, I couldn't find any specific information for this user. "
-
-        # Create context from the top 3 results
-        context = "\n".join([doc.page_content for doc in ranked_results[:3]])  # Top 3 results
-        return context
-
-    except Exception as e:
-        # Handle any exceptions that occur during the process
-        return f"An error occurred while retrieving the context: {str(e)}"
-
-qa_chain = initialize_recommendation_system()
-print(f"QA Chain: {qa_chain}")
-if not callable(qa_chain):
-    print(f"Initialization error: qa_chain is not callable. Value: {qa_chain}")
-
-def get_gemini_response(query, user_id=None):
-    try:
-        with io.StringIO() as buf, redirect_stdout(buf):
-            # Retrieve context specific to the user
-            context = retrieve_ranked_context(user_id, query)
-            qa_input = {"context": context, "query": query}
-            result = qa_chain(qa_input)
-
-        # Return the final result without any intermediate prints
-        return result['result']
-    except Exception as e:
-        # Handle any exceptions that occur during the process
-        return {"error": f"An error occurred: {str(e)}"}
-
+PROMPT = PromptTemplate(
+    template=template, input_variables=["context", "question"]
+)
 
 @app.route('/')
 def index():
@@ -328,8 +327,37 @@ def portfolio():
         available_balance=user_funds.available_balance if user_funds else 0,
         holdings=holdings
     )
+qa_chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff",
+    retriever=docsearch.as_retriever(),
+    return_source_documents=True,
+    chain_type_kwargs={"prompt": PROMPT}
+)
+def retrieve_ranked_context(user_id, query):
+    # Filter the documents based on user_id
+    results = docsearch.similarity_search(query, k=100)  # Retrieve top 100 matches
+    
+    # Filter results to only include those related to the given user_id
+    user_specific_results = [ doc for doc in results if str(doc.metadata.get('user_id')) == str(user_id)]
+    if not user_specific_results:
+        return "Sorry, I couldn't find any specific information for this user. Here's some general information about stocks and portfolios."
+    
+    # Sort by relevant fields (e.g., stock price or portfolio details)
+    ranked_results = sorted(
+        user_specific_results,
+        key=lambda x: float(x.metadata.get("price", 0)),  # Sort by stock price or other relevant field
+        reverse=True
+    )
 
-qa_chain = initialize_recommendation_system()
+    # If no results are found for the user, provide a general answer
+    if not ranked_results:
+        return "Sorry, I couldn't find any specific information for this user. Here's some general information about stocks and portfolios."
+
+    # Create context from the top 3 results
+    context = "\n".join([doc.page_content for doc in ranked_results[:3]])  # Top 3 results
+    return context
+
 @app.route('/chatbot', methods=['GET', 'POST'])
 def chatbot():
     if request.method == 'GET':
@@ -360,7 +388,7 @@ def chatbot():
                 return jsonify({"response": "Unable to extract stock name and quantity from the query."})
         if not qa_chain:
             return jsonify({"response": "Recommendation system is not initialized."})
-        response = get_gemini_response(query, user_id)
+        response = get_stock_info(user_id, query)
         print (response)
         if isinstance(response, dict):  # Handle dictionary response
             return jsonify(response)
@@ -373,6 +401,16 @@ def chatbot():
 @app.route('/tradingview')
 def tradingview():
     return render_template('tradingview.html')
+def get_stock_info(user_id, query):
+    # Suppress any print outputs during the execution
+    with io.StringIO() as buf, redirect_stdout(buf):
+        # Retrieve context specific to the user
+        context = retrieve_ranked_context(user_id, query)
+        qa_input = {"context": context, "query": query}
+        result = qa_chain(qa_input)
+
+    # Return the final result without any intermediate prints
+    return result['result']
 
 @app.route('/buy_stock', methods=['GET', 'POST'])
 def buy_stock():
