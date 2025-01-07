@@ -284,22 +284,36 @@ def portfolio():
     
     # Fetch current prices from yfinance
     stock_symbols = [stocks.ticker_symbol for _, stocks in portfolio_items]
-    stock_data = yf.download(stock_symbols, period="1d", interval="1d", progress=False)
-    
-    # Extract the closing prices
-    current_prices = stock_data['Close'].iloc[-1].to_dict() if not stock_data.empty else {}
+    try:
+        stock_data = yf.download(stock_symbols, period="1d", interval="1d", progress=False)
+        # Extract the closing prices
+        current_prices = stock_data['Close'].iloc[-1].to_dict() if not stock_data.empty else {}
+    except Exception as e:
+        print(f"Error fetching yfinance data: {str(e)}")
+        current_prices = {}
     
     # Calculate total portfolio value and returns
     total_value = Decimal('0')
     holdings = []
     
     for portfolio, stocks in portfolio_items:
-        current_price = Decimal(current_prices.get(stocks.company_name, 100))  # Fallback if price not found
+        # Try to get price from yfinance, fallback to high_price_52w if not available
+        try:
+            current_price = Decimal(current_prices.get(stocks.company_name, stocks.high_price_52w))
+        except (TypeError, ValueError):
+            # If high_price_52w is None or invalid, fallback to current_price from Stocks table
+            current_price = stocks.current_price or Decimal('0')
+            
         holding_value = current_price * Decimal(portfolio.quantity)
         total_value += holding_value
 
     for portfolio, stocks in portfolio_items:
-        current_price = Decimal(current_prices.get(stocks.company_name, 100))  # Fallback if price not found
+        # Use the same fallback logic for consistency
+        try:
+            current_price = Decimal(current_prices.get(stocks.company_name, stocks.high_price_52w))
+        except (TypeError, ValueError):
+            current_price = stocks.current_price or Decimal('0')
+            
         current_value = current_price * Decimal(portfolio.quantity)
         purchase_value = Decimal(portfolio.purchase_price) * Decimal(portfolio.quantity)
         return_pct = ((current_value - purchase_value) / purchase_value * 100) if purchase_value > 0 else 0
@@ -743,9 +757,9 @@ def monitor_stock_price(user_id, stock_id, target_price, action):
             db.session.commit()
             return
 
-        time.sleep(60)  # Wait for 1 minute before checking again
+        time.sleep(10)  # Wait for 1 minute before checking again
 
-@app.route('/stop_loss', methods=['GET', 'POST'])
+@app.route('/stock_loss', methods=['GET', 'POST'])
 def stop_loss():
     if request.method == 'POST':
         user_id = session['user_id']

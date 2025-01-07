@@ -4,24 +4,95 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stop Loss Trading</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        h1 {
+            color: #444;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        form {
+            background: #fff;
+            padding: 20px 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        label {
+            font-weight: bold;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        select, input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            text-align: center;
+            display: inline-block;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 4px;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+    </style>
 </head>
 <body>
-    <h1>Stop Loss Trading</h1>
-        <label for="stock_id">Stock:</label>
-        <select name="stock_id" required>
-            {% for stock in stocks %}
-                <option value="{{ stock.stock_id }}">{{ stock.company_name }} ({{ stock.ticker_symbol }})</option>
-            {% endfor %}
-        </select><br><br>
+    <form>
+        <h1>Stop Loss Trading</h1>
+        <div class="form-group">
+            <label for="stock_id">Stock:</label>
+            <select name="stock_id" required>
+                {% for stock in stocks %}
+                    <option value="{{ stock.stock_id }}">{{ stock.company_name }} ({{ stock.ticker_symbol }})</option>
+                {% endfor %}
+            </select>
+        </div>
 
-        <label for="target_price">Target Price:</label>
-        <input type="number" step="0.01" name="target_price" required><br><br>
+        <div class="form-group">
+            <label for="target_price">Target Price:</label>
+            <input type="number" step="0.01" name="target_price" required>
+        </div>
 
-        <label for="action">Action:</label>
-        <select name="action" required>
-            <option value="buy">Buy</option>
-            <option value="sell">Sell</option>
-        </select><br><br>
+        <div class="form-group">
+            <label for="action">Action:</label>
+            <select name="action" required>
+                <option value="buy">Buy</option>
+                <option value="sell">Sell</option>
+            </select>
+        </div>
 
         <button type="submit">Start Monitoring</button>
     </form>
