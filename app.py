@@ -25,8 +25,8 @@ from langchain.prompts import PromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from pinecone import Pinecone
-from IPython.display import display
-from IPython.display import Markdown
+#from IPython.display import display
+#from IPython.display import Markdown
 import pinecone 
 import yfinance as yf
 import tiktoken
