@@ -8,6 +8,7 @@ langchain-core==0.1.0
 langchain-community==0.0.10
 groq==0.4.2
 pinecone-client==3.0.1
-sentence-transformers-lite==0.1.1
+sentence-transformers==2.2.2
 tiktoken==0.5.2
 yfinance==0.2.35
+torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
