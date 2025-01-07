@@ -6,7 +6,8 @@ RUN apt update -y && apt install -y --no-install-recommends \
     build-essential \
     libssl-dev \
     libffi-dev \
-    libmysqlclient-dev \
+    libmariadb-dev-compat \
+    libmariadb-dev \
     pkg-config \
     && apt clean \
     && rm -rf /var/lib/apt/lists/*
