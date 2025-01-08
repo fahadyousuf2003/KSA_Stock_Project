@@ -36,6 +36,7 @@ import time
 from threading import Lock
 import logging
 from langchain_core.documents import Document
+import pandas as pd
 
 latest_data = {}
 historical_data = {}
@@ -63,7 +64,6 @@ class User_info(db.Model):
     Mobile_Number_Or_Email = db.Column(db.String(120), nullable=False)
     Password = db.Column(db.String(120), nullable=False)
     portfolios = db.relationship('Portfolio', backref='user', lazy=True)
-
 
 class Stocks(db.Model):
     stock_id = db.Column(db.Integer, primary_key=True)
@@ -104,84 +104,16 @@ class Funds(db.Model):
     total_balance = db.Column(db.Float, nullable=False, default=0.0)
     last_updated = db.Column(db.DateTime, nullable=False)
 
-
-from sqlalchemy.orm import joinedload
-import pandas as pd
-
-# Perform the join
-with app.app_context():
-    query = (
-        db.session.query(
-            User_info.id.label("user_id"),
-            User_info.name.label("user_name"),
-            User_info.Surname.label("user_surname"),
-            User_info.Gender.label("user_gender"),
-            Stocks.stock_id.label("stock_id"),
-            Stocks.ticker_symbol.label("ticker_symbol"),
-            Stocks.company_name.label("company_name"),
-            Stocks.current_price.label("current_price"),
-            Stocks.sector.label("sector"),
-            StockPriceHistory.price.label("stock_price"),
-            StockPriceHistory.date.label("price_date"),
-            Portfolio.quantity.label("quantity"),
-            Portfolio.purchase_price.label("purchase_price"),
-            Portfolio.purchase_date.label("purchase_date"),
-            Funds.available_balance.label("available_balance"),
-            Funds.total_balance.label("total_balance"),
-            Funds.last_updated.label("fund_last_updated"),
-        )
-        .join(Portfolio, User_info.id == Portfolio.user_id)
-        .join(Stocks, Portfolio.stock_id == Stocks.stock_id)
-        .join(StockPriceHistory, Stocks.stock_id == StockPriceHistory.stock_id)
-        .join(Funds, User_info.id == Funds.user_id)
-    )
-
-    # Fetch all results
-    results = query.all()
-
-    # Convert query results to a list of dictionaries
-    data = [dict(row._mapping) for row in results]
-
-    # Create a Pandas DataFrame
-    combined_data = pd.DataFrame(data)
-
-    # Save the combined data to a CSV file
-    combined_data.to_csv('combined_data.csv', index=False)
-    print("Combined data has been successfully saved to 'combined_data.csv'!")
-
-# Create combined information column
-combined_data['combined_info'] = combined_data.apply(
-    lambda row: (
-        f"User: {row['user_name']} {row['user_surname']} (Gender: {row['user_gender']}). "
-        f"Stock: {row['ticker_symbol']} - {row['company_name']} in {row['sector']} sector, "
-        f"current price: {row['current_price']}. "
-        f"Portfolio: {row['quantity']} shares purchased at {row['purchase_price']} on {row['purchase_date']}. "
-        f"Stock Price History: {row['stock_price']} on {row['price_date']}. "
-        f"Funds: Available balance: {row['available_balance']}, Total balance: {row['total_balance']} (Last updated: {row['fund_last_updated']})."
-    ),
-    axis=1
-)
-# Token encoding
-encoding = tiktoken.get_encoding('cl100k_base')
-max_tokens = 8000
-
-# Omit descriptions that are too long to embed
-combined_data["n_tokens"] = combined_data.combined_info.apply(lambda x: len(encoding.encode(x)))
-combined_data = combined_data[combined_data.n_tokens <= max_tokens]
-
-# Use HuggingFace embeddings instead of OpenAI
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
-
-# Generate embeddings
-combined_data["vector"] = combined_data.combined_info.apply(lambda x: embeddings.embed_query(x))
-combined_data.to_pickle('combined_data.pkl')
-# Set the API key as an environment variable
-os.environ["PINECONE_API_KEY"] = "pcsk_7YQanE_AP9y5db9N5vQaoUYC2h6bxvr92sEPyXzVBUcotcvBubtsEqsfkDaLQ6LrGwWRnw"
-
-# Initialize Pinecone client
-pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+combined_data2 = pd.read_pickle('combined_data2.pkl')
+combined_data= pd.read_pickle('combined_data.pkl')
+documents2 = [
+    Document(
+        page_content=row['combined_info'],
+        metadata={
+            'user_id': row['user_id'],
+        }
+    ) for _, row in combined_data2.iterrows()
+]
 documents = [
     Document(
         page_content=row['combined_info'],
@@ -190,12 +122,21 @@ documents = [
         }
     ) for _, row in combined_data.iterrows()
 ]
-index_name = "combineddataindex"
-docsearch = PineconeVectorStore.from_documents(
-    documents=documents,
-    embedding=embeddings,
-    index_name=index_name
+# Create Document objects
+
+
+# Example: Print a document
+print(documents[0].page_content)
+print(documents[0].metadata)
+# Set the API key as an environment variable
+os.environ["PINECONE_API_KEY"] = "pcsk_7YQanE_AP9y5db9N5vQaoUYC2h6bxvr92sEPyXzVBUcotcvBubtsEqsfkDaLQ6LrGwWRnw"
+
+# Initialize Pinecone client
+pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
+
 # Define LLM using Groq (Llama model)
 llm = ChatGroq(
     model_name="llama3-8b-8192",  # or another Llama model available
@@ -206,6 +147,7 @@ llm = ChatGroq(
 template = """You are a stock information assistant that helps users find details about stocks and their portfolios.
 Use the following pieces of context to answer the question at the end.
 If any information is missing from the database, provide a general answer based on your knowledge.
+answer the question 3-4 lines only
 
 {context}
 
@@ -215,7 +157,6 @@ Your response:"""
 PROMPT = PromptTemplate(
     template=template, input_variables=["context", "question"]
 )
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -342,22 +283,32 @@ def portfolio():
         available_balance=user_funds.available_balance if user_funds else 0,
         holdings=holdings
     )
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=docsearch.as_retriever(),
-    return_source_documents=True,
-    chain_type_kwargs={"prompt": PROMPT}
-)
+
+os.environ["PINECONE_API_KEY"] = "pcsk_7YQanE_AP9y5db9N5vQaoUYC2h6bxvr92sEPyXzVBUcotcvBubtsEqsfkDaLQ6LrGwWRnw"
+
 def retrieve_ranked_context(user_id, query):
+    
+# Perform the join
+    if user_id == 2:
+        index_name = "ksa-user-2"
+        docsearch = PineconeVectorStore.from_documents(
+            documents=documents2,
+            embedding=embeddings,
+            index_name=index_name
+        )
+    if user_id == 1:
+        index_name = "ksa-user-1"
+        docsearch = PineconeVectorStore.from_documents(
+            documents=documents,
+            embedding=embeddings,
+            index_name=index_name
+        )
     # Filter the documents based on user_id
     results = docsearch.similarity_search(query, k=100)  # Retrieve top 100 matches
     
     # Filter results to only include those related to the given user_id
-    user_specific_results = [ doc for doc in results if str(doc.metadata.get('user_id')) == str(user_id)]
-    if not user_specific_results:
-        return "Sorry, I couldn't find any specific information for this user. Here's some general information about stocks and portfolios."
-    
+    user_specific_results = [doc for doc in results if doc.metadata.get('user_id') == user_id]
+
     # Sort by relevant fields (e.g., stock price or portfolio details)
     ranked_results = sorted(
         user_specific_results,
@@ -372,7 +323,26 @@ def retrieve_ranked_context(user_id, query):
     # Create context from the top 3 results
     context = "\n".join([doc.page_content for doc in ranked_results[:3]])  # Top 3 results
     return context
-
+def chat(user_id,qa_input):
+    if user_id == 2:
+        index_name = "ksa-user-2"
+    if user_id == 1:
+        index_name = "ksa-user-1"
+    
+    docsearch = PineconeVectorStore.from_documents(
+        documents=documents,
+        embedding=embeddings,
+        index_name=index_name
+    )
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type="stuff",
+        retriever=docsearch.as_retriever(),
+        return_source_documents=True,
+        chain_type_kwargs={"prompt": PROMPT}
+    )
+    result = qa_chain(qa_input)
+    return result
 @app.route('/chatbot', methods=['GET', 'POST'])
 def chatbot():
     if request.method == 'GET':
@@ -401,8 +371,6 @@ def chatbot():
                 return sell_stock_logic(stock_name, quantity)
             else:
                 return jsonify({"response": "Unable to extract stock name and quantity from the query."})
-        if not qa_chain:
-            return jsonify({"response": "Recommendation system is not initialized."})
         response = get_stock_info(user_id, query)
         print (response)
         if isinstance(response, dict):  # Handle dictionary response
@@ -416,13 +384,16 @@ def chatbot():
 @app.route('/tradingview')
 def tradingview():
     return render_template('tradingview.html')
+    
+from sqlalchemy.orm import joinedload
+import pandas as pd
 def get_stock_info(user_id, query):
-    # Suppress any print outputs during the execution
     with io.StringIO() as buf, redirect_stdout(buf):
+
         # Retrieve context specific to the user
         context = retrieve_ranked_context(user_id, query)
         qa_input = {"context": context, "query": query}
-        result = qa_chain(qa_input)
+        result = chat(user_id, qa_input)
 
     # Return the final result without any intermediate prints
     return result['result']
