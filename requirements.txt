@@ -1,16 +1,20 @@
-Flask==3.0.0
-Flask-SQLAlchemy==3.1.1
-SQLAlchemy==2.0.23
-pymysql==1.1.0
-pandas
-spacy==3.7.2
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1.tar.gz
-langchain-core==0.1.0
-langchain-community==0.0.10
-groq==0.4.2
-pinecone-client==3.0.1
-sentence-transformers==2.2.2
-tiktoken==0.5.2
-yfinance==0.2.35
-torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
 
+Flask
+Flask-SQLAlchemy
+pymysql
+mysqlclient
+spacy
+thinc
+langchain
+langchain-google-genai
+langchain-groq
+langchain-huggingface
+langchain-community
+google-generativeai
+pydantic
+pinecone-client
+sentence-transformers
+tf-keras
+tiktoken
+yfinance
+groq
