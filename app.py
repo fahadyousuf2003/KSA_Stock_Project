@@ -443,8 +443,9 @@ def buy_stock():
         # Deduct funds
         user_funds.available_balance -= float(total_cost)
         try:
-            db.session.commit()
             flash('Stock purchased successfully!', 'success')
+            time.sleep(10)
+            db.session.commit()
         except Exception as e:
             db.session.rollback()
             flash(f'Error: {str(e)}', 'danger')
