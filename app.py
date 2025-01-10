@@ -25,8 +25,6 @@ from langchain.prompts import PromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from pinecone import Pinecone
-#from IPython.display import display
-#from IPython.display import Markdown
 import pinecone 
 import yfinance as yf
 import tiktoken
@@ -753,5 +751,5 @@ if __name__ == '__main__':
     start_stock_threads()
     with app.app_context():
         db.create_all()
-    # app.run(debug=True)
-    app.run(host='0.0.0.0', port=80)
+    app.run(debug=True)
+    #app.run(host='0.0.0.0', port=80)
