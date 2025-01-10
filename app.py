@@ -35,6 +35,7 @@ from threading import Lock
 import logging
 from langchain_core.documents import Document
 import pandas as pd
+from decimal import Decimal, InvalidOperation
 
 latest_data = {}
 historical_data = {}
@@ -223,63 +224,90 @@ def portfolio():
     
     # Fetch current prices from yfinance
     stock_symbols = [stocks.ticker_symbol for _, stocks in portfolio_items]
-    try:
-        stock_data = yf.download(stock_symbols, period="1d", interval="1d", progress=False)
-        # Extract the closing prices
-        current_prices = stock_data['Close'].iloc[-1].to_dict() if not stock_data.empty else {}
-    except Exception as e:
-        print(f"Error fetching yfinance data: {str(e)}")
-        current_prices = {}
+    current_prices = {}
+    
+    if stock_symbols:  # Only make API call if there are stocks to fetch
+        try:
+            stock_data = yf.download(stock_symbols, period="1d", interval="1d", progress=False)
+            if not stock_data.empty:
+                # Handle both single and multiple stock cases
+                if len(stock_symbols) == 1:
+                    current_prices[stock_symbols[0]] = float(stock_data['Close'].iloc[-1])
+                else:
+                    current_prices = stock_data['Close'].iloc[-1].to_dict()
+        except Exception as e:
+            app.logger.error(f"Error fetching yfinance data: {str(e)}")
+            # Don't silently print errors, use proper logging
     
     # Calculate total portfolio value and returns
     total_value = Decimal('0')
     holdings = []
     
-    for portfolio, stocks in portfolio_items:
-        # Try to get price from yfinance, fallback to high_price_52w if not available
+    for portfolio, stock in portfolio_items:
+        # Get current price with proper fallback chain
+        current_price = Decimal('0')
         try:
-            current_price = Decimal(current_prices.get(stocks.company_name, stocks.high_price_52w))
-        except (TypeError, ValueError):
-            # If high_price_52w is None or invalid, fallback to current_price from Stocks table
-            current_price = stocks.current_price or Decimal('0')
+            # First try yfinance price using ticker symbol
+            current_price = Decimal(str(current_prices.get(stock.ticker_symbol, 0)))
+            if current_price == 0:
+                # Fallback to stock's current price if available
+                if current_price == 0:
+                    # Last resort: use 52 week high
+                    current_price = stock.high_price_52w if stock.high_price_52w else Decimal('0')
+        except (TypeError, ValueError, InvalidOperation) as e:
+            app.logger.error(f"Error converting price for {stock.ticker_symbol}: {str(e)}")
+            current_price = Decimal('0')
             
-        holding_value = current_price * Decimal(portfolio.quantity)
-        total_value += holding_value
-
-    for portfolio, stocks in portfolio_items:
-        # Use the same fallback logic for consistency
-        try:
-            current_price = Decimal(current_prices.get(stocks.company_name, stocks.high_price_52w))
-        except (TypeError, ValueError):
-            current_price = stocks.current_price or Decimal('0')
+        quantity = Decimal(str(portfolio.quantity))
+        purchase_price = Decimal(str(portfolio.purchase_price))
+        
+        # Calculate holding metrics
+        current_value = current_price * quantity
+        purchase_value = purchase_price * quantity
+        
+        # Avoid division by zero
+        return_pct = Decimal('0')
+        if purchase_value > 0:
+            return_pct = ((current_value - purchase_value) / purchase_value * 100)
             
-        current_value = current_price * Decimal(portfolio.quantity)
-        purchase_value = Decimal(portfolio.purchase_price) * Decimal(portfolio.quantity)
-        return_pct = ((current_value - purchase_value) / purchase_value * 100) if purchase_value > 0 else 0
-        weight = (current_value / total_value * 100) if total_value > 0 else 0
+        # Calculate portfolio weight
+        weight = Decimal('0')
+        if total_value > 0:
+            weight = (current_value / total_value * 100)
+            
+        total_value += current_value
         
         holdings.append({
-            'stock_name': stocks.company_name,
-            'shares': portfolio.quantity,
-            'avg_price': float(portfolio.purchase_price),
+            'stock_name': stock.company_name,
+            'ticker': stock.ticker_symbol,
+            'shares': float(quantity),
+            'avg_price': float(purchase_price),
             'current_price': float(current_price),
+            'current_value': float(current_value),
             'weight': float(weight),
             'return': float(return_pct)
         })
     
+    # Recalculate weights now that we have the total value
+    for holding in holdings:
+        holding['weight'] = float((Decimal(str(holding['current_value'])) / total_value * 100) if total_value > 0 else 0)
+    
     # Update user's funds
     user_funds = Funds.query.filter_by(user_id=session['user_id']).first()
     if user_funds:
-        user_funds.total_balance = float(user_funds.available_balance) + float(total_value)
-        db.session.commit()
+        try:
+            user_funds.total_balance = float(Decimal(str(user_funds.available_balance)) + total_value)
+            db.session.commit()
+        except (TypeError, ValueError, InvalidOperation) as e:
+            app.logger.error(f"Error updating user funds: {str(e)}")
+            db.session.rollback()
 
-    # Render portfolio template
     return render_template(
         "portfolio.html",
         user_name=session.get('user_name'),
         total_value=float(total_value),
-        available_balance=user_funds.available_balance if user_funds else 0,
-        holdings=holdings
+        available_balance=float(user_funds.available_balance) if user_funds else 0,
+        holdings=sorted(holdings, key=lambda x: x['current_value'], reverse=True)
     )
 
 os.environ["PINECONE_API_KEY"] = "pcsk_7YQanE_AP9y5db9N5vQaoUYC2h6bxvr92sEPyXzVBUcotcvBubtsEqsfkDaLQ6LrGwWRnw"
@@ -685,68 +713,121 @@ def start_stock_threads():
             args=(symbol,),
             daemon=True
         ).start()
-def monitor_stock_price(user_id, stock_id, target_price, action):
+def monitor_stock_price(user_id, stock_id, target_price, action, quantity):
     """
     Monitor stock price and execute the action when the target price is reached.
     :param user_id: ID of the user
     :param stock_id: ID of the stock
     :param target_price: Target price for the action
     :param action: 'buy' or 'sell'
+    :param quantity: Number of shares to buy/sell
     """
     while True:
         stock = Stocks.query.get(stock_id)
         if not stock:
             print(f"Stock with ID {stock_id} not found.")
             return
+            
         current_price = stock.current_price
+        
         if (action == 'buy' and current_price <= target_price) or (action == 'sell' and current_price >= target_price):
             # Execute the trade
             portfolio = Portfolio.query.filter_by(user_id=user_id, stock_id=stock_id).first()
             funds = Funds.query.filter_by(user_id=user_id).first()
 
             if action == 'buy':
-                # Example: Buying 10 stocks
-                quantity = 10
                 total_cost = current_price * quantity
                 if funds.available_balance >= total_cost:
                     funds.available_balance -= total_cost
-                    db.session.add(Portfolio(user_id=user_id, stock_id=stock_id, quantity=quantity, purchase_price=current_price, purchase_date=time.strftime('%Y-%m-%d')))
+                    if portfolio:
+                        # Update existing portfolio entry
+                        new_total_quantity = portfolio.quantity + quantity
+                        new_avg_price = ((portfolio.purchase_price * portfolio.quantity) + (current_price * quantity)) / new_total_quantity
+                        portfolio.quantity = new_total_quantity
+                        portfolio.purchase_price = new_avg_price
+                    else:
+                        # Create new portfolio entry
+                        db.session.add(Portfolio(
+                            user_id=user_id,
+                            stock_id=stock_id,
+                            quantity=quantity,
+                            purchase_price=current_price,
+                            purchase_date=date.today()
+                        ))
                     flash(f"Bought {quantity} shares of {stock.company_name} at {current_price}", "success")
                 else:
                     flash("Insufficient funds to buy stock.", "danger")
 
             elif action == 'sell':
-                if portfolio and portfolio.quantity > 0:
-                    total_sale = current_price * portfolio.quantity
+                if portfolio and portfolio.quantity >= quantity:
+                    total_sale = current_price * quantity
                     funds.available_balance += total_sale
-                    portfolio.quantity = 0  # Sell all
-                    flash(f"Sold all shares of {stock.company_name} at {current_price}", "success")
+                    portfolio.quantity -= quantity
+                    if portfolio.quantity == 0:
+                        db.session.delete(portfolio)
+                    flash(f"Sold {quantity} shares of {stock.company_name} at {current_price}", "success")
                 else:
-                    flash("No stocks to sell.", "danger")
+                    flash("Insufficient stocks to sell.", "danger")
 
-            db.session.commit()
+            try:
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Error executing trade: {str(e)}", "danger")
             return
 
-        time.sleep(10)  # Wait for 1 minute before checking again
+        time.sleep(10)  # Check every 10 seconds
 
 @app.route('/stock_loss', methods=['GET', 'POST'])
 def stop_loss():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+        
     if request.method == 'POST':
         user_id = session['user_id']
         stock_id = int(request.form['stock_id'])
         target_price = Decimal(request.form['target_price'])
-        action = request.form['action']  # 'buy' or 'sell'
+        action = request.form['action']
+        quantity = int(request.form['quantity'])
+
+        # Validate quantity
+        if quantity <= 0:
+            flash("Quantity must be greater than 0.", "danger")
+            return redirect(url_for('stop_loss'))
+
+        # Additional validation for sell orders
+        if action == 'sell':
+            portfolio = Portfolio.query.filter_by(user_id=user_id, stock_id=stock_id).first()
+            if not portfolio or portfolio.quantity < quantity:
+                flash("Insufficient shares to sell.", "danger")
+                return redirect(url_for('stop_loss'))
+
+        # Additional validation for buy orders
+        if action == 'buy':
+            stock = Stocks.query.get(stock_id)
+            if stock:
+                total_cost = Decimal(stock.current_price) * quantity
+                funds = Funds.query.filter_by(user_id=user_id).first()
+                if not funds or funds.available_balance < float(total_cost):
+                    flash("Insufficient funds for this order.", "danger")
+                    return redirect(url_for('stop_loss'))
 
         # Start monitoring in a separate thread
-        thread = Thread(target=monitor_stock_price, args=(user_id, stock_id, target_price, action))
+        thread = Thread(
+            target=monitor_stock_price,
+            args=(user_id, stock_id, target_price, action, quantity)
+        )
         thread.daemon = True
         thread.start()
 
-        flash("Stop-loss monitoring started.", "info")
-        return redirect(url_for('stop_loss'))
+        flash(f"Stop-loss monitoring started for {quantity} shares.", "info")
+        return redirect(url_for('portfolio'))
 
+    # Get list of stocks and user's portfolio for the template
     stocks = Stocks.query.all()
-    return render_template('stock_loss.html', stocks=stocks)
+    portfolio = Portfolio.query.filter_by(user_id=session['user_id']).all()
+    
+    return render_template('stock_loss.html', stocks=stocks, portfolio=portfolio)
 if __name__ == '__main__':
     start_stock_threads()
     with app.app_context():
