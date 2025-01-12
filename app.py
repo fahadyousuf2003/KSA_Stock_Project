@@ -10,24 +10,14 @@ from decimal import Decimal
 import os
 import io
 from contextlib import redirect_stdout
-import json
-import pathlib
-import textwrap
 from datetime import date
-from langchain_google_genai import ChatGoogleGenerativeAI
-import google.generativeai as genai
-from datetime import date
-import traceback
-from groq import Groq
 from langchain_groq import ChatGroq
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Pinecone as PineconeVectorStore
 from pinecone import Pinecone
-import pinecone 
 import yfinance as yf
-import tiktoken
 import threading
 from threading import Thread 
 import time
@@ -53,56 +43,55 @@ os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 # Database Models
 class User_info(db.Model):
+    __tablename__ = 'user_info'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
-    Surname = db.Column(db.String(120), nullable=False)
-    DOB_Day = db.Column(db.Integer, nullable=False)
-    DOB_Month = db.Column(db.String(120), nullable=False)
-    DOB_YEAR = db.Column(db.Integer, nullable=False)
-    Gender = db.Column(db.String(120), nullable=False)
-    Mobile_Number_Or_Email = db.Column(db.String(120), nullable=False)
-    Password = db.Column(db.String(120), nullable=False)
+    surname = db.Column(db.String(120), nullable=False)  # Changed from Surname
+    dob_day = db.Column(db.Integer, nullable=False)  # Changed from DOB_Day
+    dob_month = db.Column(db.String(120), nullable=False)  # Changed from DOB_Month
+    dob_year = db.Column(db.Integer, nullable=False)  # Changed from DOB_YEAR
+    gender = db.Column(db.String(120), nullable=False)  # Changed from Gender
+    mobile_number_or_email = db.Column(db.String(120), nullable=False)  # Changed from Mobile_Number_Or_Email
+    password = db.Column(db.String(120), nullable=False)  # Changed from Password
     portfolios = db.relationship('Portfolio', backref='user', lazy=True)
 
 class Stocks(db.Model):
+    __tablename__ = 'stocks'
     stock_id = db.Column(db.Integer, primary_key=True)
     ticker_symbol = db.Column(db.String(10), nullable=False)
     company_name = db.Column(db.String(100), nullable=False)
-    current_price = db.Column(DECIMAL(10, 2), nullable=False)
+    current_price = db.Column(db.DECIMAL(10, 2), nullable=False)
     sector = db.Column(db.String(50))
     listing_date = db.Column(db.Date)
-    high_price_52w = db.Column(DECIMAL(10, 2))
-    low_price_52w = db.Column(DECIMAL(10, 2))
+    high_price_52w = db.Column(db.DECIMAL(10, 2))  # Changed from high_price_52w
+    low_price_52w = db.Column(db.DECIMAL(10, 2))  # Changed from low_price_52w
     updated_at = db.Column(db.DateTime)
     portfolios = db.relationship('Portfolio', backref='stock', lazy=True)
 
-
 class StockPriceHistory(db.Model):
-    __tablename__ = 'stock price history'
+    __tablename__ = 'stock_price_history'  # Changed from 'stock price history'
     price_history_id = db.Column(db.Integer, primary_key=True)
     stock_id = db.Column(db.Integer, db.ForeignKey('stocks.stock_id'), nullable=False)
     price = db.Column(db.DECIMAL(10, 2), nullable=False)
     date = db.Column(db.TIMESTAMP, nullable=False, server_default=db.func.current_timestamp())
 
-
 class Portfolio(db.Model):
+    __tablename__ = 'portfolio'
     portfolio_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user_info.id'), nullable=False)
     stock_id = db.Column(db.Integer, db.ForeignKey('stocks.stock_id'), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
-    purchase_price = db.Column(DECIMAL(10, 2), nullable=False)
+    purchase_price = db.Column(db.DECIMAL(10, 2), nullable=False)
     purchase_date = db.Column(db.Date, nullable=False)
-
 
 class Funds(db.Model):
     __tablename__ = 'funds'
-
     fund_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user_info.id'), nullable=False)
-    available_balance = db.Column(db.Float, nullable=False, default=0.0)
-    total_balance = db.Column(db.Float, nullable=False, default=0.0)
+    available_balance = db.Column(db.DECIMAL(10, 2), nullable=False, default=0.0)  # Changed from Float to DECIMAL
+    total_balance = db.Column(db.DECIMAL(10, 2), nullable=False, default=0.0)  # Changed from Float to DECIMAL
     last_updated = db.Column(db.DateTime, nullable=False)
-
+    
 combined_data2 = pd.read_pickle('combined_data2.pkl')
 combined_data= pd.read_pickle('combined_data.pkl')
 documents2 = [
@@ -160,7 +149,6 @@ PROMPT = PromptTemplate(
 def index():
     return render_template('index.html')
 
-
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
@@ -174,8 +162,14 @@ def signup():
         password = request.form.get('password')
 
         entry = User_info(
-            name=first_name, Surname=surname, DOB_Day=day, DOB_Month=month,
-            DOB_YEAR=year, Gender=gender, Mobile_Number_Or_Email=email, Password=password
+            name=first_name,
+            surname=surname,
+            dob_day=day,
+            dob_month=month,
+            dob_year=year,
+            gender=gender,
+            mobile_number_or_email=email,
+            password=password
         )
         db.session.add(entry)
         db.session.commit()
@@ -183,37 +177,36 @@ def signup():
         return redirect(url_for('login'))
     return render_template('signup.html')
 
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         email_or_phone = request.form.get('email_phone')
         password = request.form.get('password')
 
-        user = User_info.query.filter_by(Mobile_Number_Or_Email=email_or_phone, Password=password).first()
+        user = User_info.query.filter_by(
+            mobile_number_or_email=email_or_phone,
+            password=password
+        ).first()
 
         if user:
             session['user_id'] = user.id
-            session['user_name'] = f"{user.name} {user.Surname}"
+            session['user_name'] = f"{user.name} {user.surname}"
             flash('Login successful!', 'success')
             return redirect(url_for('portfolio'))
         else:
             flash('Invalid email/phone number or password. Please try again.', 'danger')
     return render_template('login.html')
 
-
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for('login'))
-
 
 @app.route("/portfolio")
 def portfolio():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    # Fetch user's portfolio with stock details
     portfolio_items = db.session.query(
         Portfolio, Stocks
     ).join(
@@ -222,37 +215,28 @@ def portfolio():
         Portfolio.user_id == session['user_id']
     ).all()
     
-    # Fetch current prices from yfinance
     stock_symbols = [stocks.ticker_symbol for _, stocks in portfolio_items]
     current_prices = {}
     
-    if stock_symbols:  # Only make API call if there are stocks to fetch
+    if stock_symbols:
         try:
             stock_data = yf.download(stock_symbols, period="1d", interval="1d", progress=False)
             if not stock_data.empty:
-                # Handle both single and multiple stock cases
                 if len(stock_symbols) == 1:
                     current_prices[stock_symbols[0]] = float(stock_data['Close'].iloc[-1])
                 else:
                     current_prices = stock_data['Close'].iloc[-1].to_dict()
         except Exception as e:
             app.logger.error(f"Error fetching yfinance data: {str(e)}")
-            # Don't silently print errors, use proper logging
     
-    # Calculate total portfolio value and returns
     total_value = Decimal('0')
     holdings = []
     
     for portfolio, stock in portfolio_items:
-        # Get current price with proper fallback chain
-        current_price = Decimal('0')
         try:
-            # First try yfinance price using ticker symbol
             current_price = Decimal(str(current_prices.get(stock.ticker_symbol, 0)))
             if current_price == 0:
-                # Fallback to stock's current price if available
                 if current_price == 0:
-                    # Last resort: use 52 week high
                     current_price = stock.high_price_52w if stock.high_price_52w else Decimal('0')
         except (TypeError, ValueError, InvalidOperation) as e:
             app.logger.error(f"Error converting price for {stock.ticker_symbol}: {str(e)}")
@@ -260,17 +244,13 @@ def portfolio():
             
         quantity = Decimal(str(portfolio.quantity))
         purchase_price = Decimal(str(portfolio.purchase_price))
-        
-        # Calculate holding metrics
         current_value = current_price * quantity
         purchase_value = purchase_price * quantity
         
-        # Avoid division by zero
         return_pct = Decimal('0')
         if purchase_value > 0:
             return_pct = ((current_value - purchase_value) / purchase_value * 100)
             
-        # Calculate portfolio weight
         weight = Decimal('0')
         if total_value > 0:
             weight = (current_value / total_value * 100)
@@ -288,11 +268,9 @@ def portfolio():
             'return': float(return_pct)
         })
     
-    # Recalculate weights now that we have the total value
     for holding in holdings:
         holding['weight'] = float((Decimal(str(holding['current_value'])) / total_value * 100) if total_value > 0 else 0)
     
-    # Update user's funds
     user_funds = Funds.query.filter_by(user_id=session['user_id']).first()
     if user_funds:
         try:
@@ -309,7 +287,7 @@ def portfolio():
         available_balance=float(user_funds.available_balance) if user_funds else 0,
         holdings=sorted(holdings, key=lambda x: x['current_value'], reverse=True)
     )
-
+    
 os.environ["PINECONE_API_KEY"] = "pcsk_7YQanE_AP9y5db9N5vQaoUYC2h6bxvr92sEPyXzVBUcotcvBubtsEqsfkDaLQ6LrGwWRnw"
 
 def retrieve_ranked_context(user_id, query):
