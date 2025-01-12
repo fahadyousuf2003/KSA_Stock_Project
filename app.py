@@ -46,7 +46,7 @@ pymysql.install_as_MySQLdb()
 pc = Pinecone(api_key="pcsk_4bw8VS_9RhtdAiBFfpZKN8p54VpYBVZVwBCGF7DCPKYVHVwVh6LWcfUCowPa6a1UEUwUCo")
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
-app.config["SQLALCHEMY_DATABASE_URI"] = 'mysql://root:@localhost/KSA_Stock_Project'
+app.config["SQLALCHEMY_DATABASE_URI"] = 'postgresql://fahad:Ux7CHDifnMzJMUDFQLBNZZkI1tOJ64NC@dpg-cu1ockt2ng1s73edt7r0-a.oregon-postgres.render.com/ksastockproject'
 db = SQLAlchemy(app)
 import os
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
