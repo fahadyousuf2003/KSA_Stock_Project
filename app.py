@@ -5,7 +5,6 @@ import spacy
 import re
 from flask import jsonify
 from sqlalchemy import DECIMAL
-import pymysql
 from decimal import Decimal
 import os
 import io
@@ -31,7 +30,6 @@ latest_data = {}
 historical_data = {}
 data_lock = Lock()
 nlp = spacy.load("en_core_web_sm")
-pymysql.install_as_MySQLdb()
 
 pc = Pinecone(api_key="pcsk_4bw8VS_9RhtdAiBFfpZKN8p54VpYBVZVwBCGF7DCPKYVHVwVh6LWcfUCowPa6a1UEUwUCo")
 app = Flask(__name__)
