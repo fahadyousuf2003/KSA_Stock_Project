@@ -1,68 +1,25 @@
--- phpMyAdmin SQL Dump
--- version 5.2.1
--- https://www.phpmyadmin.net/
---
--- Host: 127.0.0.1
--- Generation Time: Jan 10, 2025 at 01:30 PM
--- Server version: 10.4.32-MariaDB
--- PHP Version: 8.2.12
+CREATE TABLE funds (
+    fund_id INT NOT NULL,
+    user_id INT NOT NULL,
+    available_balance DECIMAL(10,2) NOT NULL,
+    total_balance DECIMAL(10,2) NOT NULL,
+    last_updated DECIMAL(10,2) NOT NULL
+);
 
-SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
-START TRANSACTION;
-SET time_zone = "+00:00";
-
-
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!40101 SET NAMES utf8mb4 */;
-
---
--- Database: `ksa_stock_project`
---
-
--- --------------------------------------------------------
-
---
--- Table structure for table `funds`
---
-
-CREATE TABLE `funds` (
-  `fund_id` int(11) NOT NULL,
-  `user_id` int(11) NOT NULL,
-  `available_balance` decimal(10,2) NOT NULL,
-  `total_balance` decimal(10,2) NOT NULL,
-  `last_updated` decimal(10,2) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `funds`
---
-
-INSERT INTO `funds` (`fund_id`, `user_id`, `available_balance`, `total_balance`, `last_updated`) VALUES
+INSERT INTO funds (fund_id, user_id, available_balance, total_balance, last_updated) VALUES
 (1, 1, 1000.00, 166000.00, 2024.00),
 (2, 2, 815.00, 32123.00, 2025.00);
 
--- --------------------------------------------------------
+CREATE TABLE portfolio (
+    portfolio_id INT NOT NULL,
+    user_id INT NOT NULL,
+    stock_id INT NOT NULL,
+    quantity INT NOT NULL,
+    purchase_price DECIMAL(10,0) NOT NULL,
+    purchase_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
---
--- Table structure for table `portfolio`
---
-
-CREATE TABLE `portfolio` (
-  `portfolio_id` int(11) NOT NULL,
-  `user_id` int(11) NOT NULL,
-  `stock_id` int(11) NOT NULL,
-  `quantity` int(11) NOT NULL,
-  `purchase_price` decimal(10,0) NOT NULL,
-  `purchase_date` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `portfolio`
---
-
-INSERT INTO `portfolio` (`portfolio_id`, `user_id`, `stock_id`, `quantity`, `purchase_price`, `purchase_date`) VALUES
+INSERT INTO portfolio (portfolio_id, user_id, stock_id, quantity, purchase_price, purchase_date) VALUES
 (1, 1, 1, 100, 72, '2024-12-30 19:00:00'),
 (2, 1, 2, 500, 28, '2024-12-30 19:00:00'),
 (3, 1, 3, 1000, 8, '2024-12-30 19:00:00'),
@@ -71,26 +28,16 @@ INSERT INTO `portfolio` (`portfolio_id`, `user_id`, `stock_id`, `quantity`, `pur
 (6, 2, 5, 201, 17, '2025-01-04 11:05:32'),
 (7, 2, 6, 150, 26, '2024-12-30 19:00:00'),
 (8, 2, 7, 75, 120, '2024-12-30 19:00:00'),
-(11, 2, 4, 1, 112, '2025-01-03 19:00:00');
+(11, 2, 4, 1, 112, '2025-01-03 19:00:00'),
 
--- --------------------------------------------------------
+CREATE TABLE "stock price history" (
+    price_history_id INT NOT NULL,
+    stock_id INT NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
---
--- Table structure for table `stock price history`
---
-
-CREATE TABLE `stock price history` (
-  `price_history_id` int(11) NOT NULL,
-  `stock_id` int(11) NOT NULL,
-  `price` decimal(10,2) NOT NULL,
-  `date` timestamp NOT NULL DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `stock price history`
---
-
-INSERT INTO `stock price history` (`price_history_id`, `stock_id`, `price`, `date`) VALUES
+INSERT INTO "stock price history" (price_history_id, stock_id, price, date) VALUES
 (1, 1, 71.20, '2024-11-30 19:00:00'),
 (2, 1, 71.15, '2024-12-01 19:00:00'),
 (3, 1, 71.45, '2024-12-02 19:00:00'),
@@ -302,29 +249,19 @@ INSERT INTO `stock price history` (`price_history_id`, `stock_id`, `price`, `dat
 (209, 7, 121.30, '2024-12-02 19:00:00'),
 (210, 7, 120.20, '2024-12-01 19:00:00');
 
--- --------------------------------------------------------
+CREATE TABLE stocks (
+    stock_id INT NOT NULL,
+    ticker_symbol VARCHAR(120) NOT NULL,
+    company_name VARCHAR(120) NOT NULL,
+    current_price DECIMAL(40,2) NOT NULL,
+    sector VARCHAR(120) NOT NULL,
+    listing_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    high_price_52w DECIMAL(40,2) NOT NULL,
+    low_price_52w DECIMAL(40,2) NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
---
--- Table structure for table `stocks`
---
-
-CREATE TABLE `stocks` (
-  `stock_id` int(40) NOT NULL,
-  `ticker_symbol` varchar(120) NOT NULL,
-  `company_name` varchar(120) NOT NULL,
-  `current_price` decimal(40,2) NOT NULL,
-  `sector` varchar(120) NOT NULL,
-  `listing_date` timestamp NOT NULL DEFAULT current_timestamp(),
-  `high_price_52w` decimal(40,2) NOT NULL,
-  `low_price_52w` decimal(40,2) NOT NULL,
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `stocks`
---
-
-INSERT INTO `stocks` (`stock_id`, `ticker_symbol`, `company_name`, `current_price`, `sector`, `listing_date`, `high_price_52w`, `low_price_52w`, `updated_at`) VALUES
+INSERT INTO stocks (stock_id, ticker_symbol, company_name, current_price, sector, listing_date, high_price_52w, low_price_52w, updated_at) VALUES
 (1, '2030.SR', 'SARCO', 72.00, 'Energy', '2024-12-31 10:51:14', 99.00, 68.00, '2024-12-31 10:51:14'),
 (2, '2222.SR', 'SAUDI ARAMCO', 28.00, 'Energy', '2024-12-31 10:51:14', 34.00, 27.00, '2024-12-31 10:51:14'),
 (3, '2380.SR', 'PETRO RABIGH', 8.00, 'Energy', '2024-12-31 10:51:14', 11.00, 7.00, '2024-12-31 10:51:14'),
@@ -333,166 +270,62 @@ INSERT INTO `stocks` (`stock_id`, `ticker_symbol`, `company_name`, `current_pric
 (6, '4030.SR', 'BAHRI', 26.00, 'Energy', '2024-12-31 10:51:14', 30.00, 22.00, '2024-12-31 10:51:14'),
 (7, '4200.SR', 'ALDREES', 120.00, 'Energy', '2024-12-31 10:51:14', 148.00, 100.00, '2024-12-31 10:51:14');
 
--- --------------------------------------------------------
+CREATE TABLE user_info (
+  id INT NOT NULL,
+  name VARCHAR(40) NOT NULL,
+  surname VARCHAR(40) NOT NULL,
+  dob_day INT NOT NULL,
+  dob_month VARCHAR(40) NOT NULL,
+  dob_year INT NOT NULL,
+  gender TEXT NOT NULL,
+  mobile_number_or_email TEXT NOT NULL,
+  password TEXT NOT NULL
+);
 
---
--- Table structure for table `transactions`
---
-
-CREATE TABLE `transactions` (
-  `transaction_id` int(11) NOT NULL,
-  `user_id` int(11) NOT NULL,
-  `stock_id` int(40) NOT NULL,
-  `transaction_type` varchar(120) NOT NULL,
-  `quantity` int(11) NOT NULL,
-  `price_per_share` decimal(10,2) NOT NULL,
-  `total_value` decimal(10,2) NOT NULL,
-  `transaction_date` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- --------------------------------------------------------
-
---
--- Table structure for table `user_info`
---
-
-CREATE TABLE `user_info` (
-  `id` int(11) NOT NULL,
-  `name` varchar(40) NOT NULL,
-  `Surname` varchar(40) NOT NULL,
-  `DOB_Day` int(40) NOT NULL,
-  `DOB_Month` varchar(40) NOT NULL,
-  `DOB_Year` int(40) NOT NULL,
-  `Gender` text NOT NULL,
-  `Mobile_Number_Or_Email` text NOT NULL,
-  `Password` text NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `user_info`
---
-
-INSERT INTO `user_info` (`id`, `name`, `Surname`, `DOB_Day`, `DOB_Month`, `DOB_Year`, `Gender`, `Mobile_Number_Or_Email`, `Password`) VALUES
+INSERT INTO user_info (id, name, surname, dob_day, dob_month, dob_year, gender, mobile_number_or_email, password) VALUES
 (1, 'Ali', 'zain', 12, 'jan', 1999, 'male', '033567', '12345'),
 (2, 'Fahad', 'Mustafa', 2, 'Mar', 1962, 'Male', 'fahad@ffkwn.com', '12345');
 
---
--- Indexes for dumped tables
---
+ALTER TABLE funds
+  ADD PRIMARY KEY (fund_id),
+  ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES user_info (id);
 
---
--- Indexes for table `funds`
---
-ALTER TABLE `funds`
-  ADD PRIMARY KEY (`fund_id`),
-  ADD KEY `fk_user_` (`user_id`);
+ALTER TABLE portfolio
+  ADD PRIMARY KEY (portfolio_id),
+  ADD CONSTRAINT fk_stock_id FOREIGN KEY (stock_id) REFERENCES stocks (stock_id),
+  ADD CONSTRAINT fk_user_id FOREIGN KEY (user_id) REFERENCES user_info (id);
 
---
--- Indexes for table `portfolio`
---
-ALTER TABLE `portfolio`
-  ADD PRIMARY KEY (`portfolio_id`),
-  ADD KEY `fk_stock_id` (`stock_id`),
-  ADD KEY `fk_user_id` (`user_id`);
+ALTER TABLE "stock price history"
+  ADD PRIMARY KEY (price_history_id),
+  ADD CONSTRAINT fk_stok_id FOREIGN KEY (stock_id) REFERENCES stocks (stock_id);
 
---
--- Indexes for table `stock price history`
---
-ALTER TABLE `stock price history`
-  ADD PRIMARY KEY (`price_history_id`),
-  ADD KEY `fk_stok_id` (`stock_id`);
+ALTER TABLE stocks
+  ADD PRIMARY KEY (stock_id);
 
---
--- Indexes for table `stocks`
---
-ALTER TABLE `stocks`
-  ADD PRIMARY KEY (`stock_id`);
+ALTER TABLE user_info
+  ADD PRIMARY KEY (id);
 
---
--- Indexes for table `transactions`
---
-ALTER TABLE `transactions`
-  ADD PRIMARY KEY (`transaction_id`),
-  ADD KEY `fk_stocks_id` (`stock_id`),
-  ADD KEY `fk_users_id` (`user_id`);
+CREATE SEQUENCE funds_fund_id_seq;
 
---
--- Indexes for table `user_info`
---
-ALTER TABLE `user_info`
-  ADD PRIMARY KEY (`id`);
+ALTER TABLE funds
+  ALTER COLUMN fund_id SET DEFAULT nextval('funds_fund_id_seq');
 
---
--- AUTO_INCREMENT for dumped tables
---
+CREATE SEQUENCE portfolio_portfolio_id_seq;
 
---
--- AUTO_INCREMENT for table `funds`
---
-ALTER TABLE `funds`
-  MODIFY `fund_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+ALTER TABLE portfolio
+  ALTER COLUMN portfolio_id SET DEFAULT nextval('portfolio_portfolio_id_seq');
 
---
--- AUTO_INCREMENT for table `portfolio`
---
-ALTER TABLE `portfolio`
-  MODIFY `portfolio_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+CREATE SEQUENCE stock_price_history_price_history_id_seq;
 
---
--- AUTO_INCREMENT for table `stock price history`
---
-ALTER TABLE `stock price history`
-  MODIFY `price_history_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=211;
+ALTER TABLE "stock price history"
+  ALTER COLUMN price_history_id SET DEFAULT nextval('stock_price_history_price_history_id_seq');
 
---
--- AUTO_INCREMENT for table `stocks`
---
-ALTER TABLE `stocks`
-  MODIFY `stock_id` int(40) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+CREATE SEQUENCE stocks_stock_id_seq;
 
---
--- AUTO_INCREMENT for table `transactions`
---
-ALTER TABLE `transactions`
-  MODIFY `transaction_id` int(11) NOT NULL AUTO_INCREMENT;
+ALTER TABLE stocks
+  ALTER COLUMN stock_id SET DEFAULT nextval('stocks_stock_id_seq');
 
---
--- AUTO_INCREMENT for table `user_info`
---
-ALTER TABLE `user_info`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+CREATE SEQUENCE user_info_id_seq;
 
---
--- Constraints for dumped tables
---
-
---
--- Constraints for table `funds`
---
-ALTER TABLE `funds`
-  ADD CONSTRAINT `fk_user_` FOREIGN KEY (`user_id`) REFERENCES `user_info` (`id`);
-
---
--- Constraints for table `portfolio`
---
-ALTER TABLE `portfolio`
-  ADD CONSTRAINT `fk_stock_id` FOREIGN KEY (`stock_id`) REFERENCES `stocks` (`stock_id`),
-  ADD CONSTRAINT `fk_user_id` FOREIGN KEY (`user_id`) REFERENCES `user_info` (`id`);
-
---
--- Constraints for table `stock price history`
---
-ALTER TABLE `stock price history`
-  ADD CONSTRAINT `fk_stok_id` FOREIGN KEY (`stock_id`) REFERENCES `stocks` (`stock_id`);
-
---
--- Constraints for table `transactions`
---
-ALTER TABLE `transactions`
-  ADD CONSTRAINT `fk_stocks_id` FOREIGN KEY (`stock_id`) REFERENCES `stocks` (`stock_id`),
-  ADD CONSTRAINT `fk_users_id` FOREIGN KEY (`user_id`) REFERENCES `user_info` (`id`);
-COMMIT;
-
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+ALTER TABLE user_info
+  ALTER COLUMN id SET DEFAULT nextval('user_info_id_seq');
